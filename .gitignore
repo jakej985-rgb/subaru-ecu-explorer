@@ -1,0 +1,24 @@
+# Local captures and vehicle-specific data
+data/captures/*
+!data/captures/.gitkeep
+*.log
+*.sqlite
+*.db
+
+# Build output
+build/
+dist/
+out/
+bin/
+obj/
+
+# IDE and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.swp
+*~
