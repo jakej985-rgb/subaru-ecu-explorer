@@ -135,29 +135,46 @@ func TestDecodeProductionNull(t *testing.T) {
 		t.Fatal(err)
 	}
 	cases := map[string]struct {
+		key        string
 		production json.RawMessage
 		wantErr    bool
 	}{
-		"omitted": {nil, false},
-		"null":    {json.RawMessage("null"), true},
-		"object":  {json.RawMessage(`{"status":"unknown"}`), false},
+		"omitted":         {"production", nil, false},
+		"null":            {"production", json.RawMessage("null"), true},
+		"capitalizedNull": {"Production", json.RawMessage("null"), true},
+		"object":          {"production", json.RawMessage(`{"status":"unknown"}`), false},
 	}
 	for name, tc := range cases {
 		delete(m, "production")
+		delete(m, "Production")
 		if tc.production != nil {
-			m["production"] = tc.production
+			m[tc.key] = tc.production
 		}
 		data, err := json.Marshal(m)
 		if err != nil {
 			t.Fatal(err)
 		}
 		var p VehicleProfile
-		if err := json.Unmarshal(data, &p); err != nil {
-			t.Fatalf("%s: decode: %v", name, err)
+		err = json.Unmarshal(data, &p)
+		if err == nil {
+			err = p.Validate()
 		}
-		if err := p.Validate(); (err != nil) != tc.wantErr {
+		if (err != nil) != tc.wantErr {
 			t.Errorf("%s: wantErr=%v, got %v", name, tc.wantErr, err)
 		}
+	}
+}
+
+func TestDecodeIntoPopulatedProfilePreservesFields(t *testing.T) {
+	p := validProfile()
+	if err := json.Unmarshal([]byte(`{"production":{"status":"unknown"}}`), &p); err != nil {
+		t.Fatal(err)
+	}
+	if p.Production == nil || p.Production.Status != StatusUnknown {
+		t.Fatalf("expected production to be decoded, got %+v", p.Production)
+	}
+	if err := p.Validate(); err != nil {
+		t.Fatalf("partial decode should preserve existing fields, got %v", err)
 	}
 }
 
