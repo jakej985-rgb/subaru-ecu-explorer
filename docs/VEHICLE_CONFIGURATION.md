@@ -50,3 +50,5 @@ go test ./...
 - Drivetrain layout and variant (AWD details must not be inferred from the Outback nameplate).
 - Factory body code, body style, and trim level.
 - Whether additional EJ25 variants (e.g., different aspiration or market calibrations) need distinct engine configuration documents.
+
+Hardware/ECU compatibility candidates are tracked separately in the [Hardware Compatibility Catalog](HARDWARE_CATALOG.md); no module is confirmed installed for the target vehicle yet.

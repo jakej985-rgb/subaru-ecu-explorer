@@ -235,6 +235,8 @@ type Registry struct {
 	Drivetrains    map[string]DrivetrainConfig
 	Trims          map[string]TrimConfig
 	Configurations map[string]VehicleConfiguration
+	Hardware       map[string]HardwareProfile
+	Catalogs       map[string]CompatibilityCatalog
 }
 
 func NewRegistry() *Registry {
@@ -245,6 +247,8 @@ func NewRegistry() *Registry {
 		Drivetrains:    map[string]DrivetrainConfig{},
 		Trims:          map[string]TrimConfig{},
 		Configurations: map[string]VehicleConfiguration{},
+		Hardware:       map[string]HardwareProfile{},
+		Catalogs:       map[string]CompatibilityCatalog{},
 	}
 }
 
