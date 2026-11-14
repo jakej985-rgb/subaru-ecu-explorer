@@ -1,0 +1,95 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "subaru-legacy-outback-1999-usdm-ej25-manual",
+  "displayName": "1999 USDM Subaru Legacy Outback 2.5L EJ25 Manual",
+  "modelYear": {
+    "value": 1999,
+    "status": "confirmed",
+    "evidence": [
+      {
+        "source": "user-confirmed project target",
+        "description": "Initial project vehicle scope"
+      }
+    ]
+  },
+  "market": {
+    "value": "USDM",
+    "status": "confirmed",
+    "evidence": [
+      {
+        "source": "user-confirmed project target",
+        "description": "United States domestic market"
+      }
+    ]
+  },
+  "make": {
+    "value": "Subaru",
+    "status": "confirmed",
+    "evidence": [
+      {
+        "source": "user-confirmed project target"
+      }
+    ]
+  },
+  "model": {
+    "value": "Legacy Outback",
+    "status": "confirmed",
+    "evidence": [
+      {
+        "source": "user-confirmed project target"
+      }
+    ]
+  },
+  "body": {
+    "status": "unknown",
+    "notes": "Exact body/variant code not yet verified"
+  },
+  "trim": {
+    "status": "unknown",
+    "notes": "Exact trim not yet verified"
+  },
+  "engine": {
+    "value": "EJ25 2.5L",
+    "status": "confirmed",
+    "evidence": [
+      {
+        "source": "user-confirmed project target"
+      }
+    ]
+  },
+  "transmission": {
+    "value": "Manual",
+    "status": "confirmed",
+    "evidence": [
+      {
+        "source": "user-confirmed project target"
+      }
+    ]
+  },
+  "drivetrain": {
+    "status": "unknown",
+    "notes": "Do not infer variant-specific drivetrain details from the broad model label"
+  },
+  "production": {
+    "status": "unknown",
+    "notes": "Production range not yet verified"
+  },
+  "identifiers": {
+    "engineECUPartNumber": {
+      "status": "unknown",
+      "notes": "Must be read from the installed ECU label"
+    },
+    "engineECUROMID": {
+      "status": "unknown",
+      "notes": "Must be acquired from a supported identification procedure"
+    },
+    "absControllerPartNumber": {
+      "status": "unknown",
+      "notes": "Controller identity must be verified independently"
+    },
+    "absHydraulicAssemblyPartNumber": {
+      "status": "unknown",
+      "notes": "Do not conflate hydraulic assembly and controller identifiers"
+    }
+  }
+}
