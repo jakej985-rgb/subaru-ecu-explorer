@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jakej985-rgb/subaru-ecu-explorer/blob/main/schemas/vehicle-profile.schema.json",
+  "title": "Subaru ECU Explorer Vehicle Profile",
+  "description": "Versioned vehicle identity profile with explicit fact status and evidence provenance.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "displayName", "modelYear", "market", "make", "model", "body", "trim", "engine", "transmission", "drivetrain"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "id": { "type": "string", "minLength": 1, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "displayName": { "type": "string", "minLength": 1 },
+    "modelYear": { "$ref": "#/$defs/integerFact" },
+    "market": { "$ref": "#/$defs/stringFact" },
+    "make": { "$ref": "#/$defs/stringFact" },
+    "model": { "$ref": "#/$defs/stringFact" },
+    "body": { "$ref": "#/$defs/stringFact" },
+    "trim": { "$ref": "#/$defs/stringFact" },
+    "engine": { "$ref": "#/$defs/stringFact" },
+    "transmission": { "$ref": "#/$defs/stringFact" },
+    "drivetrain": { "$ref": "#/$defs/stringFact" },
+    "production": { "$ref": "#/$defs/productionFact" },
+    "identifiers": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/stringFact" }
+    }
+  },
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source"],
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "reference": { "type": "string" }
+      }
+    },
+    "factBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["confirmed", "inferred", "unknown", "unsupported"] },
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
+        "notes": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "enum": ["confirmed", "inferred"] } }, "required": ["status"] },
+          "then": {
+            "required": ["value", "evidence"],
+            "properties": { "evidence": { "minItems": 1 } }
+          }
+        },
+        {
+          "if": { "properties": { "status": { "enum": ["unknown", "unsupported"] } }, "required": ["status"] },
+          "then": { "not": { "required": ["value"] } }
+        }
+      ]
+    },
+    "stringFact": {
+      "allOf": [
+        { "$ref": "#/$defs/factBase" },
+        {
+          "type": "object",
+          "properties": { "value": { "type": "string", "minLength": 1 } }
+        }
+      ]
+    },
+    "integerFact": {
+      "allOf": [
+        { "$ref": "#/$defs/factBase" },
+        {
+          "type": "object",
+          "properties": { "value": { "type": "integer", "minimum": 1900, "maximum": 2100 } }
+        }
+      ]
+    },
+    "productionRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start": { "type": "string" },
+        "end": { "type": "string" }
+      }
+    },
+    "productionFact": {
+      "allOf": [
+        { "$ref": "#/$defs/factBase" },
+        { "type": "object", "properties": { "value": { "$ref": "#/$defs/productionRange" } } }
+      ]
+    }
+  }
+}
