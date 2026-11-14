@@ -26,20 +26,63 @@ func TestEngineConfigValidate(t *testing.T) {
 	}
 }
 
-func TestEngineConfigValidateRejectsBadValues(t *testing.T) {
-	liters := 0.0
-	cyl := 20
-	c := EngineConfig{
+func validEngine() EngineConfig {
+	liters := 2.5
+	return EngineConfig{
 		SchemaVersion:      ConfigSchemaVersion,
 		ID:                 "bad-engine",
 		DisplayName:        "Bad",
 		Make:               stringFact("Subaru"),
 		Family:             stringFact("EJ25"),
 		DisplacementLiters: Fact[float64]{Value: &liters, Status: StatusConfirmed, Evidence: []Evidence{{Source: "s"}}},
-		Cylinders:          Fact[int]{Value: &cyl, Status: StatusConfirmed, Evidence: []Evidence{{Source: "s"}}},
+		Cylinders:          Fact[int]{Status: StatusUnknown},
+		Aspiration:         Fact[string]{Status: StatusUnknown},
+		FuelSystem:         Fact[string]{Status: StatusUnknown},
+		Valvetrain:         Fact[string]{Status: StatusUnknown},
 	}
+}
+
+func TestEngineConfigValidateRejectsBadValues(t *testing.T) {
+	if err := validEngine().Validate(); err != nil {
+		t.Fatalf("baseline should validate, got %v", err)
+	}
+
+	zero := 0.0
+	c := validEngine()
+	c.DisplacementLiters.Value = &zero
 	if err := c.Validate(); err == nil {
-		t.Fatal("expected displacement/cylinder range errors")
+		t.Fatal("expected displacement range error")
+	}
+
+	cyl := 20
+	c = validEngine()
+	c.Cylinders = Fact[int]{Value: &cyl, Status: StatusConfirmed, Evidence: []Evidence{{Source: "s"}}}
+	if err := c.Validate(); err == nil {
+		t.Fatal("expected cylinder range error")
+	}
+}
+
+func TestEngineConfigProductionNull(t *testing.T) {
+	base := `"schemaVersion":"1.0.0","id":"e","displayName":"E",` +
+		`"make":{"value":"Subaru","status":"confirmed","evidence":[{"source":"s"}]},` +
+		`"family":{"status":"unknown"},"displacementLiters":{"status":"unknown"},` +
+		`"cylinders":{"status":"unknown"},"aspiration":{"status":"unknown"},` +
+		`"fuelSystem":{"status":"unknown"},"valvetrain":{"status":"unknown"}`
+	cases := map[string]bool{
+		"{" + base + "}":                                  true,
+		"{" + base + `,"production":{"status":"unknown"}}`: true,
+		"{" + base + `,"production":null}`:                false,
+		"{" + base + `,"Production":null}`:                false,
+	}
+	for doc, ok := range cases {
+		var c EngineConfig
+		err := json.Unmarshal([]byte(doc), &c)
+		if ok && err != nil {
+			t.Errorf("expected decode to succeed for %s: %v", doc, err)
+		}
+		if !ok && err == nil {
+			t.Errorf("expected decode to fail for %s", doc)
+		}
 	}
 }
 
@@ -63,6 +106,8 @@ func TestTransmissionConfigRejectsUnknownTypeValue(t *testing.T) {
 		ID:            "odd-transmission",
 		DisplayName:   "Odd",
 		Type:          stringFact("telepathic"),
+		Family:        Fact[string]{Status: StatusUnknown},
+		GearCount:     Fact[int]{Status: StatusUnknown},
 	}
 	if err := c.Validate(); err == nil {
 		t.Fatal("expected enum violation for transmission type")

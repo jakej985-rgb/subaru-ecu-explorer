@@ -1,6 +1,8 @@
 package vehicle
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -26,6 +28,28 @@ type EngineConfig struct {
 	Valvetrain         Fact[string]           `json:"valvetrain"`
 	Production         *Fact[ProductionRange] `json:"production,omitempty"`
 	Notes              string                 `json:"notes,omitempty"`
+}
+
+// UnmarshalJSON rejects an explicit null production, which the schema forbids
+// but encoding/json would otherwise decode as an omitted field.
+func (c *EngineConfig) UnmarshalJSON(data []byte) error {
+	type alias EngineConfig
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	for key, v := range raw {
+		// encoding/json matches field names case-insensitively.
+		if strings.EqualFold(key, "production") && bytes.Equal(bytes.TrimSpace(v), []byte("null")) {
+			return errors.New("production must be an object when present")
+		}
+	}
+	decoded := alias(*c)
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*c = EngineConfig(decoded)
+	return nil
 }
 
 // TransmissionConfig describes a transmission type/variant. The specific
