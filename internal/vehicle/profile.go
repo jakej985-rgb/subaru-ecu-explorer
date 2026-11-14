@@ -3,10 +3,13 @@ package vehicle
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
 const CurrentSchemaVersion = "1.0.0"
+
+var profileIDPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
 type FactStatus string
 
@@ -48,7 +51,7 @@ type VehicleProfile struct {
 	Engine        Fact[string]            `json:"engine"`
 	Transmission  Fact[string]            `json:"transmission"`
 	Drivetrain    Fact[string]            `json:"drivetrain"`
-	Production    Fact[ProductionRange]   `json:"production,omitempty"`
+	Production    *Fact[ProductionRange]  `json:"production,omitempty"`
 	Identifiers   map[string]Fact[string] `json:"identifiers,omitempty"`
 }
 
@@ -59,6 +62,8 @@ func (p VehicleProfile) Validate() error {
 	}
 	if strings.TrimSpace(p.ID) == "" {
 		problems = append(problems, errors.New("id is required"))
+	} else if !profileIDPattern.MatchString(p.ID) {
+		problems = append(problems, fmt.Errorf("id must match %s", profileIDPattern.String()))
 	}
 	if strings.TrimSpace(p.DisplayName) == "" {
 		problems = append(problems, errors.New("displayName is required"))
@@ -73,26 +78,41 @@ func (p VehicleProfile) Validate() error {
 		{"transmission", p.Transmission}, {"drivetrain", p.Drivetrain},
 	}
 	for _, check := range checks {
-		if err := validateFact(check.name, check.fact); err != nil {
+		if err := validateStringFact(check.name, check.fact); err != nil {
 			problems = append(problems, err)
 		}
 	}
 	if err := validateFact("modelYear", p.ModelYear); err != nil {
 		problems = append(problems, err)
 	}
-	if err := validateFact("production", p.Production); err != nil {
-		problems = append(problems, err)
+	if p.ModelYear.Value != nil && (*p.ModelYear.Value < 1900 || *p.ModelYear.Value > 2100) {
+		problems = append(problems, errors.New("modelYear: value must be between 1900 and 2100"))
+	}
+	if p.Production != nil {
+		if err := validateFact("production", *p.Production); err != nil {
+			problems = append(problems, err)
+		}
 	}
 	for key, fact := range p.Identifiers {
 		if strings.TrimSpace(key) == "" {
 			problems = append(problems, errors.New("identifier keys cannot be blank"))
 			continue
 		}
-		if err := validateFact("identifiers."+key, fact); err != nil {
+		if err := validateStringFact("identifiers."+key, fact); err != nil {
 			problems = append(problems, err)
 		}
 	}
 	return errors.Join(problems...)
+}
+
+func validateStringFact(name string, fact Fact[string]) error {
+	if err := validateFact(name, fact); err != nil {
+		return err
+	}
+	if fact.Value != nil && *fact.Value == "" {
+		return fmt.Errorf("%s: value must not be empty", name)
+	}
+	return nil
 }
 
 func validateFact[T any](name string, fact Fact[T]) error {
