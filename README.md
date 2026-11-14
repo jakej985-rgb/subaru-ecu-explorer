@@ -8,12 +8,14 @@ The initial release targets this vehicle only. Reusable architecture is encourag
 
 - **Diagnostic backend:** Go.
 - **User interface:** browser-based web dashboard.
-- **Hardware:** ELM327-compatible OBD-II adapters and Subaru-specific SSM interfaces through separate interchangeable adapter drivers.
+- **Hardware:** three separate paths: ELM327-compatible OBD-II adapters, Subaru-specific SSM interfaces, and a custom hardwired Arduino Mega 2560 R3 acquisition interface.
+- **Arduino path:** Mega firmware sends framed, versioned diagnostic acquisition messages over USB serial to the local Go service. The Go service owns the serial connection, validates data, and handles higher-level decoding.
+- **Vehicle electrical interface:** the Arduino connects to vehicle signals only through a documented automotive-rated transceiver and protection circuitry. Never connect vehicle 12V or diagnostic lines directly to Arduino GPIO.
 - **Connection model:** a local Go service owns physical adapter connections. The browser communicates with the local service through controlled REST APIs and WebSocket streaming.
 - **Storage:** local-first vehicle data and diagnostic sessions.
 - **Initial behavior:** read-only identification, supported DTC retrieval, supported live data, and logging.
 
-ELM327 compatibility does not imply Subaru SSM capability. Adapter drivers and diagnostic protocols are separate layers.
+The Arduino is our dedicated custom hardware path, not a replacement for ELM327. ELM327 compatibility does not imply Subaru SSM capability. Adapter drivers and diagnostic protocols are separate layers. The Arduino board alone is not a vehicle electrical interface; the approved transceiver, protection, wiring, and verified protocol profile are required.
 
 ## Target vehicle
 
@@ -34,7 +36,7 @@ Keep the full VIN private by default. Confirm ECU labels/part numbers, ROM ident
 The project is managed through the [Master GitHub Roadmap](https://github.com/jakej985-rgb/subaru-ecu-explorer/issues/9) and eight major phase parents:
 
 1. [Vehicle Identification & Configuration](https://github.com/jakej985-rgb/subaru-ecu-explorer/issues/10)
-2. [Hardware & Communication Interface](https://github.com/jakej985-rgb/subaru-ecu-explorer/issues/11)
+2. [Hardware & Communication Interface](https://github.com/jakej985-rgb/subaru-ecu-explorer/issues/11) — includes the Arduino Mega hardware, protected wiring, firmware, Go driver, and bench-validation work ([#62–#66](https://github.com/jakej985-rgb/subaru-ecu-explorer/issues/62)).
 3. [Protocol Engine](https://github.com/jakej985-rgb/subaru-ecu-explorer/issues/12)
 4. [Engine Diagnostics](https://github.com/jakej985-rgb/subaru-ecu-explorer/issues/13)
 5. [Data Acquisition & Storage](https://github.com/jakej985-rgb/subaru-ecu-explorer/issues/14)
@@ -64,11 +66,11 @@ The existing [ABS discovery epic #1](https://github.com/jakej985-rgb/subaru-ecu-
 - `data/` — definitions, schemas, and sanitized captures
 - `tests/` — protocol fixtures and decoder tests
 - `dashboard/` — planned browser-based dashboard
-- `firmware/` — future protected diagnostic-interface firmware, if justified
+- `firmware/` — planned Arduino Mega diagnostic acquisition firmware
 
 ## Safety
 
-This project is for research and diagnostics. Do not perform ECU writes, flashing, actuator tests, or experimental pin bridging during initial read-only phases. Use a properly protected automotive interface; never connect a bare Arduino or ESP32 GPIO directly to vehicle diagnostic lines.
+This project is for research and diagnostics. Do not perform ECU writes, flashing, actuator tests, or experimental pin bridging during initial read-only phases. Use a properly protected automotive interface; never connect a bare Arduino or ESP32 GPIO directly to vehicle diagnostic lines. Arduino hardware must pass bench validation and a documented safety review before connection to the vehicle.
 
 Read [docs/SAFETY.md](docs/SAFETY.md) before connecting hardware.
 
