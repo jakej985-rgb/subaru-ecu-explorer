@@ -1,18 +1,19 @@
 # Subaru ECU Explorer
 
-An open-source research and diagnostics platform for Subaru engine, transmission, and ABS systems, beginning with the **1999 USDM Subaru Legacy Outback, EJ25, manual transmission**.
+A modular, evidence-driven Subaru diagnostics and ECU research platform, beginning with the **1999 USDM Subaru Legacy Outback, 2.5L EJ25, manual transmission**.
 
-The project uses existing Subaru diagnostic research and the open-source [FreeSSM](https://github.com/Comer352L/FreeSSM) project as a protocol reference and potential integration foundation.
+The initial release targets this vehicle only. Reusable architecture is encouraged, but support for other years, markets, or models must be researched and validated separately.
 
-## Project goals
+## Architecture
 
-- Identify supported ECUs and diagnostic interfaces for the target vehicle.
-- Read ECU identification, diagnostic trouble codes, and supported live measurements.
-- Capture timestamped diagnostic sessions and export logs.
-- Investigate Subaru Select Monitor (SSM) protocol behavior and ECU definitions.
-- Develop a separate, evidence-based ABS diagnostic path.
-- Build a local dashboard and analysis tools.
-- Research ECU memory and firmware capabilities without assuming undocumented features exist.
+- **Diagnostic backend:** Go.
+- **User interface:** browser-based web dashboard.
+- **Hardware:** ELM327-compatible OBD-II adapters and Subaru-specific SSM interfaces through separate interchangeable adapter drivers.
+- **Connection model:** a local Go service owns physical adapter connections. The browser communicates with the local service through controlled REST APIs and WebSocket streaming.
+- **Storage:** local-first vehicle data and diagnostic sessions.
+- **Initial behavior:** read-only identification, supported DTC retrieval, supported live data, and logging.
+
+ELM327 compatibility does not imply Subaru SSM capability. Adapter drivers and diagnostic protocols are separate layers.
 
 ## Target vehicle
 
@@ -23,39 +24,51 @@ The project uses existing Subaru diagnostic research and the open-source [FreeSS
 | Market | United States (USDM) |
 | Engine | 2.5L EJ25 |
 | Transmission | Manual |
-| Engine management | To be identified from the vehicle |
+| Engine ECU | To be identified from the vehicle |
 | ABS | In scope; exact module/variant to be confirmed |
 
-Treat this profile as a starting point. Confirm the VIN, ECU label/part number, ROM ID, and installed ABS hardware before relying on variant-specific definitions.
+Keep the full VIN private by default. Confirm ECU labels/part numbers, ROM identity, and installed ABS hardware before relying on variant-specific definitions.
+
+## Project roadmap
+
+The project is managed through the [Master GitHub Roadmap](https://github.com/jakej985-rgb/subaru-ecu-explorer/issues/9) and eight major phase parents:
+
+1. [Vehicle Identification & Configuration](https://github.com/jakej985-rgb/subaru-ecu-explorer/issues/10)
+2. [Hardware & Communication Interface](https://github.com/jakej985-rgb/subaru-ecu-explorer/issues/11)
+3. [Protocol Engine](https://github.com/jakej985-rgb/subaru-ecu-explorer/issues/12)
+4. [Engine Diagnostics](https://github.com/jakej985-rgb/subaru-ecu-explorer/issues/13)
+5. [Data Acquisition & Storage](https://github.com/jakej985-rgb/subaru-ecu-explorer/issues/14)
+6. [ABS & Additional Module Diagnostics](https://github.com/jakej985-rgb/subaru-ecu-explorer/issues/15)
+7. [ECU Research & Advanced Capabilities](https://github.com/jakej985-rgb/subaru-ecu-explorer/issues/16)
+8. [Web Application, Dashboard & Release](https://github.com/jakej985-rgb/subaru-ecu-explorer/issues/17)
+
+The existing [ABS discovery epic #1](https://github.com/jakej985-rgb/subaru-ecu-explorer/issues/1) and its phase issues #2–#8 are preserved under Phase 6.
 
 ## Development principles
 
-1. **Read-only first.** Begin with identification, DTC retrieval, live data, and logging.
-2. **Vehicle-specific evidence.** Record source, model-year applicability, connector, pin, and confidence for every protocol claim.
+1. **Read-only first.** Begin with identification, DTC retrieval, supported live data, and logging.
+2. **Vehicle-specific evidence.** Record source, model-year applicability, connector, protocol, and confidence for every vehicle-specific claim.
 3. **No guessed pinouts.** Never bridge or energize unknown terminals.
-4. **Separate diagnostic systems.** Generic OBD-II, Subaru SSM, engine test mode, transmission diagnostics, and ABS diagnostics are distinct paths unless proven otherwise.
-5. **Preserve provenance.** Keep factory definitions separate from user annotations and experimental findings.
-6. **Reproducible research.** Store sanitized captures, test fixtures, and documented procedures.
-7. **Respect upstream licenses.** FreeSSM is GPL-3.0. Review its license and obligations before copying or distributing code.
+4. **Separate diagnostic systems.** Generic OBD-II, Subaru SSM, engine diagnostics, transmission research, and ABS diagnostics are distinct paths unless proven otherwise.
+5. **Preserve provenance.** Factory definitions remain separate from user annotations and experimental findings.
+6. **Local-first data ownership.** Diagnostic sessions and captures should remain usable offline and be exportable.
+7. **Reproducible research.** Store sanitized captures, test fixtures, and documented procedures.
+8. **Respect upstream licenses.** FreeSSM is GPL-3.0. Review its license and obligations before copying or distributing code.
 
 ## Repository map
 
 - `docs/` — vehicle profile, hardware, protocols, safety, and research notes
 - `third_party/` — upstream dependencies and license notices
-- `core/` — transport, protocol, ECU, decoding, and logging components
+- `core/` — planned Go transport, protocol, ECU, decoding, and logging components
 - `tools/` — command-line utilities
 - `data/` — definitions, schemas, and sanitized captures
 - `tests/` — protocol fixtures and decoder tests
-- `dashboard/` — future local dashboard
-- `firmware/` — future protected diagnostic-interface firmware
-
-## Initial milestones
-
-See [ROADMAP.md](ROADMAP.md). The first milestone is vehicle and ECU identification, followed by safe communication using known-compatible hardware.
+- `dashboard/` — planned browser-based dashboard
+- `firmware/` — future protected diagnostic-interface firmware, if justified
 
 ## Safety
 
-This project is for research and diagnostics. Do not perform ECU writes, flashing, actuator tests, or experimental pin bridging during the initial read-only phases. Use a properly protected automotive interface; never connect a bare Arduino or ESP32 GPIO directly to vehicle diagnostic lines.
+This project is for research and diagnostics. Do not perform ECU writes, flashing, actuator tests, or experimental pin bridging during initial read-only phases. Use a properly protected automotive interface; never connect a bare Arduino or ESP32 GPIO directly to vehicle diagnostic lines.
 
 Read [docs/SAFETY.md](docs/SAFETY.md) before connecting hardware.
 
