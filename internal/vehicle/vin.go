@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 // VINLength is the standard 17-character VIN length.
@@ -49,8 +50,8 @@ const (
 // input is recorded in Errors and Complete stays false. Only structurally
 // valid positions are decoded; nothing is guessed.
 type VINDecode struct {
-	Input          string           `json:"input"`
-	VIN            string           `json:"vin"`
+	Input          string           `json:"-"` // raw input is transient and must never be serialized
+	VIN            string           `json:"-"` // normalized full VIN is transient and must never be serialized
 	Complete       bool             `json:"complete"`
 	CheckDigit     CheckDigitStatus `json:"checkDigit"`
 	WMI            string           `json:"wmi,omitempty"`
@@ -69,7 +70,7 @@ func DecodeVIN(input string) VINDecode {
 	d := VINDecode{Input: input, CheckDigit: CheckDigitNotApplicable}
 	var b strings.Builder
 	for _, r := range strings.ToUpper(strings.TrimSpace(input)) {
-		if r == '-' || r == ' ' {
+		if r == '-' || unicode.IsSpace(r) {
 			continue
 		}
 		b.WriteRune(r)
@@ -93,8 +94,8 @@ func DecodeVIN(input string) VINDecode {
 	if n >= 3 {
 		d.WMI = d.VIN[:3]
 	}
-	if n >= 9 {
-		d.VDS = d.VIN[3:9]
+	if n >= 8 {
+		d.VDS = d.VIN[3:8]
 	}
 	if n >= 17 {
 		d.VIS = d.VIN[9:]
