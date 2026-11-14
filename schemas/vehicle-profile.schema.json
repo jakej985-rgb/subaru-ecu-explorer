@@ -42,6 +42,7 @@
       "required": ["status"],
       "properties": {
         "status": { "enum": ["confirmed", "inferred", "unknown", "unsupported"] },
+        "value": {},
         "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
         "notes": { "type": "string" }
       },
