@@ -10,15 +10,16 @@ The first release targets this vehicle only. Reusable architecture is encouraged
 
 - **Diagnostic backend:** Go.
 - **User interface:** browser-based web dashboard.
-- **Hardware:** ELM327-compatible OBD-II adapters and Subaru-specific SSM interfaces through separate interchangeable drivers.
-- **Connection ownership:** a local Go service manages physical adapter connections.
-- **Browser communication:** controlled local REST APIs and WebSocket streaming; no direct browser-to-vehicle connection.
+- **Hardware:** three separate, interchangeable paths: ELM327-compatible OBD-II adapters; Subaru-specific SSM interfaces; and a custom hardwired Arduino Mega 2560 R3 acquisition interface.
+- **Arduino interface:** Mega 2560 R3 is the initial prototype controller. It connects to vehicle signals only through a documented automotive-rated transceiver and protection circuitry. Firmware streams framed, versioned acquisition messages over USB serial to the local Go service.
+- **Connection ownership:** a local Go service manages physical adapter connections and owns the Arduino serial port.
+- **Browser communication:** controlled local REST APIs and WebSocket streaming; no direct browser-to-vehicle or browser-to-Arduino connection.
 - **Storage:** local-first diagnostic sessions and vehicle data.
 - **Initial operation boundary:** read-only identification, supported DTC retrieval, supported live data, and logging.
 - **Evidence:** vehicle-specific profiles, connector details, protocols, and capabilities require traceable sources and confidence.
-- **Safety:** no arbitrary pin probing, connector bridging, actuator commands, ECU writes, security bypass, or flashing in early milestones.
+- **Safety:** no arbitrary pin probing, connector bridging, actuator commands, ECU writes, security bypass, or flashing in early milestones. Never connect vehicle 12V or diagnostic lines directly to Arduino GPIO.
 
-ELM327 compatibility does not imply Subaru SSM capability. The adapter driver and diagnostic protocol are separate layers.
+ELM327 compatibility does not imply Subaru SSM capability. The adapter driver and diagnostic protocol are separate layers. The Arduino board alone is not a vehicle electrical interface; the approved transceiver, protection, wiring, and verified protocol profile are required.
 
 ## GitHub roadmap
 
@@ -43,6 +44,9 @@ The master issue tracks all eight phase parents and the overall project:
 - Subaru SSM hardware research/implementation.
 - USB, serial, and network adapter discovery.
 - Connection lifecycle, health, and safety tests.
+- **Arduino Mega 2560 R3 hardwired diagnostic interface:** hardware architecture/BOM, protected vehicle interface and wiring, read-only firmware, Go serial driver, and bench validation ([#62–#66](https://github.com/jakej985-rgb/subaru-ecu-explorer/issues/62)).
+
+Arduino implementation is staged: hardware and factory pin research first, bench validation next, and vehicle connection only after explicit electrical and safety review. ELM327, SSM, and Arduino remain distinct adapter paths.
 
 ### Phase 3 — Protocol Engine
 
@@ -109,7 +113,7 @@ Research does not authorize write or flash implementation.
 ## Dependency and parallel-work guidance
 
 1. Phase 1 establishes vehicle and hardware profile foundations.
-2. Phase 2 establishes safe adapter abstractions and connection management.
+2. Phase 2 establishes safe adapter abstractions and connection management. Arduino design and firmware are developed as a dedicated adapter path; vehicle connection is gated by bench validation and safety review.
 3. Phase 3 builds protocol handling over the adapter layer.
 4. Phase 4 uses verified engine ECU and protocol support.
 5. Phase 5 begins alongside Phases 3 and 4 as shared infrastructure.
@@ -137,6 +141,7 @@ Milestones are outcome gates, not calendar promises.
 - Factory definitions remain immutable; user annotations and modifications are separate.
 - Unknown, ambiguous, unsupported, and failed identification states are explicit.
 - Read-only behavior is the default and enforced at the capability/operation boundary.
+- Arduino vehicle-facing signals use a reviewed automotive interface/protection stage; bench validation and explicit safety approval precede vehicle connection.
 - Safety-critical behavior and hardware-dependent claims receive review and validation.
 
 ## Non-goals for early milestones
