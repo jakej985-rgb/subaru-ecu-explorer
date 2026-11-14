@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "subaru-legacy-outback-1999-usdm-ej25-manual",
+  "displayName": "1999 USDM Subaru Legacy Outback EJ25 manual configuration",
+  "profile": {
+    "value": "subaru-legacy-outback-1999-usdm-ej25-manual",
+    "status": "confirmed",
+    "evidence": [
+      {
+        "source": "user-confirmed project target"
+      }
+    ]
+  },
+  "engine": {
+    "value": "subaru-ej25-2-5l",
+    "status": "confirmed",
+    "evidence": [
+      {
+        "source": "user-confirmed project target"
+      }
+    ]
+  },
+  "transmission": {
+    "value": "manual-transmission-unverified",
+    "status": "confirmed",
+    "evidence": [
+      {
+        "source": "user-confirmed project target",
+        "description": "Only the manual type is confirmed; the referenced configuration asserts nothing beyond that"
+      }
+    ]
+  },
+  "drivetrain": {
+    "status": "unknown",
+    "notes": "Do not infer AWD or any drivetrain detail from the Outback nameplate"
+  },
+  "body": {
+    "status": "unknown"
+  },
+  "trim": {
+    "status": "unknown"
+  },
+  "notes": "Initial target configuration. Drivetrain, body, and trim references remain unknown until vehicle-specific evidence is recorded."
+}

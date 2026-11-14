@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jakej985-rgb/subaru-ecu-explorer/blob/main/schemas/transmission-config.schema.json",
+  "title": "Subaru ECU Explorer Transmission Configuration",
+  "description": "Versioned transmission configuration document. Transmission type alone does not identify a gearbox; family and gear count remain unknown until verified.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "displayName", "type", "family", "gearCount"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "id": { "type": "string", "minLength": 1, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "displayName": { "type": "string", "minLength": 1 },
+    "type": {
+      "allOf": [
+        { "$ref": "#/$defs/stringFact" },
+        {
+          "type": "object",
+          "properties": {
+            "value": { "enum": ["manual", "automatic", "cvt", "dct", "other"] }
+          }
+        }
+      ]
+    },
+    "family": { "$ref": "#/$defs/stringFact" },
+    "gearCount": {
+      "allOf": [
+        { "$ref": "#/$defs/integerFact" },
+        { "type": "object", "properties": { "value": { "type": "integer", "minimum": 1, "maximum": 12 } } }
+      ]
+    },
+    "notes": { "type": "string" }
+  },
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source"],
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "reference": { "type": "string" }
+      }
+    },
+    "factBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["confirmed", "inferred", "unknown", "unsupported"] },
+        "value": {},
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
+        "notes": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "enum": ["confirmed", "inferred"] } }, "required": ["status"] },
+          "then": {
+            "required": ["value", "evidence"],
+            "properties": { "evidence": { "minItems": 1 } }
+          }
+        },
+        {
+          "if": { "properties": { "status": { "enum": ["unknown", "unsupported"] } }, "required": ["status"] },
+          "then": { "not": { "required": ["value"] } }
+        }
+      ]
+    },
+    "stringFact": {
+      "allOf": [
+        { "$ref": "#/$defs/factBase" },
+        {
+          "type": "object",
+          "properties": { "value": { "type": "string", "minLength": 1 } }
+        }
+      ]
+    },
+    "integerFact": {
+      "allOf": [
+        { "$ref": "#/$defs/factBase" },
+        {
+          "type": "object",
+          "properties": { "value": { "type": "integer" } }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "subaru-ej25-2-5l",
+  "displayName": "Subaru EJ25 2.5L",
+  "make": {
+    "value": "Subaru",
+    "status": "confirmed",
+    "evidence": [
+      {
+        "source": "user-confirmed project target",
+        "description": "Initial project vehicle scope"
+      }
+    ]
+  },
+  "family": {
+    "value": "EJ25",
+    "status": "confirmed",
+    "evidence": [
+      {
+        "source": "user-confirmed project target"
+      }
+    ]
+  },
+  "displacementLiters": {
+    "value": 2.5,
+    "status": "confirmed",
+    "evidence": [
+      {
+        "source": "user-confirmed project target"
+      }
+    ]
+  },
+  "cylinders": {
+    "status": "unknown",
+    "notes": "Cylinder count and architecture not yet verified against a citable source"
+  },
+  "aspiration": {
+    "status": "unknown",
+    "notes": "Naturally aspirated vs turbocharged not yet verified for this application"
+  },
+  "fuelSystem": {
+    "status": "unknown"
+  },
+  "valvetrain": {
+    "status": "unknown"
+  },
+  "production": {
+    "status": "unknown",
+    "notes": "Production range not yet verified"
+  }
+}
