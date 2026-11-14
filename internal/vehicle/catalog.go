@@ -1,6 +1,8 @@
 package vehicle
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -67,6 +69,28 @@ type CatalogEntry struct {
 	Notes         string                 `json:"notes,omitempty"`
 }
 
+// UnmarshalJSON rejects an explicit null applicability, which the schema
+// forbids but encoding/json would otherwise decode as an omitted field.
+func (e *CatalogEntry) UnmarshalJSON(data []byte) error {
+	type alias CatalogEntry
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	for key, v := range raw {
+		// encoding/json matches field names case-insensitively.
+		if strings.EqualFold(key, "applicability") && bytes.Equal(bytes.TrimSpace(v), []byte("null")) {
+			return errors.New("applicability must be an object when present")
+		}
+	}
+	decoded := alias(*e)
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*e = CatalogEntry(decoded)
+	return nil
+}
+
 // CompatibilityCatalog is a versioned set of catalog entries scoped to one or
 // more vehicle configurations.
 type CompatibilityCatalog struct {
@@ -125,7 +149,7 @@ func (e CatalogEntry) Validate() error {
 	if !moduleKinds[e.Module] {
 		problems = append(problems, fmt.Errorf("module: unsupported module kind %q", e.Module))
 	}
-	if err := validateFact("hardware", e.Hardware); err != nil {
+	if err := validateStringFact("hardware", e.Hardware); err != nil {
 		problems = append(problems, err)
 	}
 	if !validTier(e.Tier) {
@@ -206,8 +230,11 @@ func (r *Registry) ResolveCatalog(c CompatibilityCatalog) error {
 			}
 		}
 		if e.Hardware.Value != nil {
-			if _, ok := r.Hardware[*e.Hardware.Value]; !ok {
+			hw, ok := r.Hardware[*e.Hardware.Value]
+			if !ok {
 				problems = append(problems, fmt.Errorf("entries[%d]: no registered hardware profile %q", i, *e.Hardware.Value))
+			} else if hw.Kind != e.Module {
+				problems = append(problems, fmt.Errorf("entries[%d]: hardware profile %q is kind %q, entry module is %q", i, hw.ID, hw.Kind, e.Module))
 			}
 		}
 	}
