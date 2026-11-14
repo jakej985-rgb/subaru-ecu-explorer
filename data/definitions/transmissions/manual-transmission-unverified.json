@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "manual-transmission-unverified",
+  "displayName": "Manual transmission (variant unverified)",
+  "type": {
+    "value": "manual",
+    "status": "confirmed",
+    "evidence": [
+      {
+        "source": "user-confirmed project target"
+      }
+    ]
+  },
+  "family": {
+    "status": "unknown",
+    "notes": "Specific gearbox family not yet verified; do not assume a gear count or model from the model year alone"
+  },
+  "gearCount": {
+    "status": "unknown"
+  },
+  "notes": "Conservative placeholder covering only the confirmed fact that the target vehicle is manual. Replace or refine once the installed transmission is identified."
+}
