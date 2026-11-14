@@ -1,6 +1,6 @@
 # Vehicle Profile
 
-The machine-readable profile format is defined by [Vehicle Profile Schema](../schemas/vehicle-profile.schema.json), schema version `1.0.0`. The Go model and validator live in `internal/vehicle`.
+The machine-readable profile format is defined by [Vehicle Profile Schema](../schemas/vehicle-profile.schema.json), schema version `1.0.0`. The Go model and validator live in `internal/vehicle`. Engine, transmission, drivetrain, and trim/body-variant configurations are modeled separately and bound to profiles by ID; see [Vehicle Configuration](VEHICLE_CONFIGURATION.md).
 
 ## Target configuration
 
