@@ -6,8 +6,7 @@
 - [ ] Photograph the ECU label and record part number/revision.
 - [ ] Record ECU ROM ID once safely readable.
 - [ ] Identify the exact diagnostic connectors from factory service documentation and physical inspection.
-- [ ] Identify ABS control-module part number and variant.
-- [ ] Record current warning-lamp behavior and existing symptoms without assuming faults.
+- [ ] Record current ABS warning-lamp behavior and existing symptoms without assuming faults.
 
 **Exit criteria:** A vehicle profile with verified hardware identifiers and clearly marked unknowns.
 
@@ -32,15 +31,19 @@
 
 **Exit criteria:** Reproducible DTC and live-data sessions with validated decoding.
 
-## Phase 3 — ABS diagnostics
+## Phase 3 — Multi-module ABS discovery and diagnostics
 
-- [ ] Verify the exact ABS module and factory diagnostic procedure.
-- [ ] Document ABS warning-lamp blink-code retrieval and clearing procedures from the correct manual.
-- [ ] Implement read-only code retrieval only after the connector and procedure are positively identified.
-- [ ] Investigate whether the ABS module supports enhanced/live data and what interface/protocol is required.
-- [ ] Keep ABS findings separate from engine SSM assumptions.
+- [ ] Build a 1999 USDM Legacy ABS fitment catalog across supported model/body/engine/transmission variants.
+- [ ] Separate ABS ECU repair part numbers from complete hydraulic-unit assembly part numbers.
+- [ ] Add candidate lookup from vehicle configuration.
+- [ ] Add manual part-number entry and evidence-backed profile matching.
+- [ ] Map dedicated ABS diagnostic connectors and procedures by verified profile.
+- [ ] Implement only documented, read-only ABS identification and blink-code procedures.
+- [ ] Determine which profiles support electronic DTC retrieval and which expose live data.
+- [ ] Add per-profile decoders and captured test fixtures.
+- [ ] Validate the Outback manual-transmission profile against the actual vehicle.
 
-**Exit criteria:** Verified ABS code retrieval; live-data support documented only if demonstrated.
+**Exit criteria:** The detector reports confirmed/probable/candidate/unknown with evidence and never guesses a module identity. Read-only diagnostics work only for verified profiles.
 
 ## Phase 4 — Transmission and additional systems
 
@@ -60,7 +63,7 @@
 
 - ECU flashing or tuning.
 - Arbitrary memory writes.
-- Actuator tests.
+- ABS actuator tests.
 - Immobilizer/security bypass.
 - Assuming generic OBD-II provides Subaru-enhanced measurements.
 - Assuming green engine test-mode connectors are ABS diagnostic connectors.
