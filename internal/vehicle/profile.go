@@ -1,6 +1,8 @@
 package vehicle
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -53,6 +55,26 @@ type VehicleProfile struct {
 	Drivetrain    Fact[string]            `json:"drivetrain"`
 	Production    *Fact[ProductionRange]  `json:"production,omitempty"`
 	Identifiers   map[string]Fact[string] `json:"identifiers,omitempty"`
+
+	// productionNull records an explicit JSON null, which the schema rejects.
+	productionNull bool
+}
+
+func (p *VehicleProfile) UnmarshalJSON(data []byte) error {
+	type alias VehicleProfile
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	var decoded alias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*p = VehicleProfile(decoded)
+	if v, ok := raw["production"]; ok && bytes.Equal(bytes.TrimSpace(v), []byte("null")) {
+		p.productionNull = true
+	}
+	return nil
 }
 
 func (p VehicleProfile) Validate() error {
@@ -88,7 +110,9 @@ func (p VehicleProfile) Validate() error {
 	if p.ModelYear.Value != nil && (*p.ModelYear.Value < 1900 || *p.ModelYear.Value > 2100) {
 		problems = append(problems, errors.New("modelYear: value must be between 1900 and 2100"))
 	}
-	if p.Production != nil {
+	if p.productionNull {
+		problems = append(problems, errors.New("production must be an object when present"))
+	} else if p.Production != nil {
 		if err := validateFact("production", *p.Production); err != nil {
 			problems = append(problems, err)
 		}

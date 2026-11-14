@@ -1,6 +1,9 @@
 package vehicle
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func stringFact(value string) Fact[string] {
 	return Fact[string]{Value: &value, Status: StatusConfirmed, Evidence: []Evidence{{Source: "user-confirmed"}}}
@@ -118,6 +121,42 @@ func TestValidateValueConstraints(t *testing.T) {
 		p.ModelYear.Value = &year
 		if err := p.Validate(); err != nil {
 			t.Errorf("year %d should validate, got %v", y, err)
+		}
+	}
+}
+
+func TestDecodeProductionNull(t *testing.T) {
+	base, err := json.Marshal(validProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(base, &m); err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string]struct {
+		production json.RawMessage
+		wantErr    bool
+	}{
+		"omitted": {nil, false},
+		"null":    {json.RawMessage("null"), true},
+		"object":  {json.RawMessage(`{"status":"unknown"}`), false},
+	}
+	for name, tc := range cases {
+		delete(m, "production")
+		if tc.production != nil {
+			m["production"] = tc.production
+		}
+		data, err := json.Marshal(m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var p VehicleProfile
+		if err := json.Unmarshal(data, &p); err != nil {
+			t.Fatalf("%s: decode: %v", name, err)
+		}
+		if err := p.Validate(); (err != nil) != tc.wantErr {
+			t.Errorf("%s: wantErr=%v, got %v", name, tc.wantErr, err)
 		}
 	}
 }
