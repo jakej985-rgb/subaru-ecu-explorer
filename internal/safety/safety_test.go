@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -141,5 +142,155 @@ func TestAuthorizeDoesNotPerformIO(t *testing.T) {
 	}
 	if len(tr.Written()) != 0 {
 		t.Fatal("Authorize must not write")
+	}
+}
+
+// echoSession replies to each request with the request bytes, simulating
+// a device that answers every request.
+// It also records any Write issued while a previous exchange is still
+// awaiting its response, which deterministically detects overlap.
+type echoSession struct {
+	*fake.Session
+	tr *fake.Transport
+
+	mu       sync.Mutex
+	inflight int
+	overlaps int
+}
+
+func (e *echoSession) Write(p []byte) (int, error) {
+	e.mu.Lock()
+	e.inflight++
+	if e.inflight > 1 {
+		e.overlaps++
+	}
+	e.mu.Unlock()
+	n, err := e.Session.Write(p)
+	if err == nil {
+		req := append([]byte(nil), p...)
+		// Delay the reply to widen the window for overlapping callers.
+		time.AfterFunc(5*time.Millisecond, func() { e.tr.Feed(req) })
+	}
+	return n, err
+}
+
+func (e *echoSession) Read(p []byte) (int, error) {
+	n, err := e.Session.Read(p)
+	if n > 0 {
+		e.mu.Lock()
+		e.inflight--
+		e.mu.Unlock()
+	}
+	return n, err
+}
+
+func TestConcurrentTransactionsKeepResponseOwnership(t *testing.T) {
+	tr := fake.NewTransport()
+	s := fake.NewSession(adapter.Info{ID: "dev", Kind: adapter.KindELM327},
+		adapter.Capabilities{ReadOnly: true, Transport: "fake"}, tr)
+	echo := &echoSession{Session: s, tr: tr}
+	g := Wrap(echo, &Policy{
+		ResponseTimeout:     time.Second,
+		ResponseIdleTimeout: 10 * time.Millisecond,
+	})
+
+	reqs := []string{"AAAA", "BBBB", "CCCC", "DDDD", "EEEE", "FFFF"}
+	var wg sync.WaitGroup
+	errs := make(chan error, len(reqs))
+	for _, r := range reqs {
+		wg.Add(1)
+		go func(req string) {
+			defer wg.Done()
+			resp, err := g.Transact(context.Background(), OpReadData, []byte(req))
+			if err != nil {
+				errs <- err
+				return
+			}
+			if string(resp) != req {
+				errs <- errors.New("request " + req + " got response " + string(resp))
+			}
+		}(r)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+	if echo.overlaps != 0 {
+		t.Fatalf("%d requests were written while another exchange was in flight", echo.overlaps)
+	}
+}
+
+func TestOversizedResponseDoesNotLeakIntoNext(t *testing.T) {
+	tr := fake.NewTransport()
+	s := fake.NewSession(adapter.Info{ID: "dev", Kind: adapter.KindELM327},
+		adapter.Capabilities{ReadOnly: true, Transport: "fake"}, tr)
+	g := Wrap(s, &Policy{
+		MaxResponseBytes:    8,
+		ResponseTimeout:     500 * time.Millisecond,
+		ResponseIdleTimeout: 10 * time.Millisecond,
+	})
+
+	tr.Feed([]byte("0123456789ABCDEFGHIJ"))
+	if _, err := g.Transact(context.Background(), OpReadData, []byte("a")); !errors.Is(err, ErrResponseTooLarge) {
+		t.Fatalf("expected ErrResponseTooLarge, got %v", err)
+	}
+
+	tr.Feed([]byte("OK"))
+	resp, err := g.Transact(context.Background(), OpReadData, []byte("b"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(resp) != "OK" {
+		t.Fatalf("stale bytes leaked into next response: %q", resp)
+	}
+}
+
+func TestCancellationDuringBlockedRead(t *testing.T) {
+	tr := fake.NewTransport()
+	s := fake.NewSession(adapter.Info{ID: "dev", Kind: adapter.KindELM327},
+		adapter.Capabilities{ReadOnly: true, Transport: "fake"}, tr)
+	g := Wrap(s, &Policy{ResponseTimeout: 5 * time.Second})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(20*time.Millisecond, cancel)
+	start := time.Now()
+	_, err := g.Transact(ctx, OpReadData, []byte("x"))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+	if el := time.Since(start); el > time.Second {
+		t.Fatalf("cancellation did not interrupt read; took %s", el)
+	}
+}
+
+func TestContextDeadlineExpiryIsError(t *testing.T) {
+	g, _ := gatedSession(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if _, err := g.Transact(ctx, OpReadData, []byte("x")); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context.DeadlineExceeded, got %v", err)
+	}
+}
+
+func TestPreconditionCancellingContextBlocksWrite(t *testing.T) {
+	tr := fake.NewTransport()
+	s := fake.NewSession(adapter.Info{ID: "dev", Kind: adapter.KindELM327},
+		adapter.Capabilities{ReadOnly: true, Transport: "fake"}, tr)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	g := Wrap(s, &Policy{
+		Preconditions: []Precondition{
+			func(context.Context, adapter.Session) error {
+				cancel()
+				return nil
+			},
+		},
+	})
+	if _, err := g.Transact(ctx, OpReadData, []byte("x")); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+	if len(tr.Written()) != 0 {
+		t.Fatal("cancelled-in-precondition op must not write")
 	}
 }

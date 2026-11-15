@@ -100,6 +100,8 @@ var (
 	ErrRateLimited = errors.New("safety: rate limit exceeded")
 	// ErrPrecondition means a custom precondition failed.
 	ErrPrecondition = errors.New("safety: precondition failed")
+	// ErrResponseTooLarge means the response exceeded MaxResponseBytes.
+	ErrResponseTooLarge = errors.New("safety: response exceeds MaxResponseBytes")
 )
 
 // GatedSession wraps an adapter.Session and is the supported API for
@@ -108,6 +110,10 @@ var (
 type GatedSession struct {
 	inner  adapter.Session
 	policy Policy
+
+	// txnMu serializes complete request/response exchanges so concurrent
+	// callers cannot consume each other's responses or deadlines.
+	txnMu sync.Mutex
 
 	mu      sync.Mutex
 	lastTxn time.Time
@@ -178,6 +184,9 @@ func (g *GatedSession) check(ctx context.Context, op Operation) error {
 // response until ResponseTimeout, the context deadline, or
 // MaxResponseBytes. Prohibited operations fail before any byte is written.
 func (g *GatedSession) Transact(ctx context.Context, op Operation, request []byte) ([]byte, error) {
+	g.txnMu.Lock()
+	defer g.txnMu.Unlock()
+
 	if err := g.check(ctx, op); err != nil {
 		return nil, err
 	}
@@ -201,7 +210,20 @@ func (g *GatedSession) Transact(ctx context.Context, op Operation, request []byt
 	}
 	_ = g.inner.SetDeadline(ioDeadline)
 
+	// Interrupt in-flight I/O on cancellation of contexts without a
+	// deadline by forcing the transport deadline into the past.
+	stop := context.AfterFunc(ctx, func() { _ = g.inner.SetDeadline(time.Now()) })
+	defer stop()
+
+	// Preconditions may have taken time or cancelled ctx; recheck before
+	// any byte is written.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if _, err := g.inner.Write(request); err != nil {
+		if cerr := ctx.Err(); cerr != nil {
+			return nil, cerr
+		}
 		return nil, err
 	}
 
@@ -222,16 +244,24 @@ func (g *GatedSession) Transact(ctx context.Context, op Operation, request []byt
 		if !time.Now().Before(deadline) {
 			break
 		}
+		if err := ctx.Err(); err != nil {
+			return resp, err
+		}
 		_ = g.inner.SetDeadline(deadline)
 		n, err := g.inner.Read(buf)
 		if n > 0 {
 			resp = append(resp, buf[:n]...)
-			if len(resp) >= g.policy.MaxResponseBytes {
-				resp = resp[:g.policy.MaxResponseBytes]
-				break
+			if len(resp) > g.policy.MaxResponseBytes {
+				// No response boundary was reached: drain leftovers so
+				// they cannot leak into the next Transact, then fail.
+				g.drain(ioDeadline)
+				return resp[:g.policy.MaxResponseBytes], ErrResponseTooLarge
 			}
 		}
 		if err != nil {
+			if cerr := ctx.Err(); cerr != nil {
+				return resp, cerr
+			}
 			// Deadline/timeout after partial or no data is a normal end of
 			// response for request/response protocols without framing.
 			if errors.Is(err, adapter.ErrTimeout) || isTimeoutErr(err) {
@@ -240,7 +270,32 @@ func (g *GatedSession) Transact(ctx context.Context, op Operation, request []byt
 			return resp, err
 		}
 	}
+	// A transport timeout at the context deadline may be observed before
+	// ctx.Err() is set; report it as a context error, not success.
+	if err := ctx.Err(); err != nil {
+		return resp, err
+	}
+	if dl, ok := ctx.Deadline(); ok && !time.Now().Before(dl) {
+		return resp, context.DeadlineExceeded
+	}
 	return resp, nil
+}
+
+// drain discards pending bytes until the line is idle for
+// ResponseIdleTimeout or hardDeadline passes.
+func (g *GatedSession) drain(hardDeadline time.Time) {
+	buf := make([]byte, 512)
+	for time.Now().Before(hardDeadline) {
+		dl := time.Now().Add(g.policy.ResponseIdleTimeout)
+		if dl.After(hardDeadline) {
+			dl = hardDeadline
+		}
+		_ = g.inner.SetDeadline(dl)
+		n, err := g.inner.Read(buf)
+		if err != nil || n == 0 {
+			return
+		}
+	}
 }
 
 func isTimeoutErr(err error) bool {
