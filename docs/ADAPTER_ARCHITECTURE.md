@@ -80,6 +80,8 @@ never decodes ECU/SSM messages.
 - Vehicle-facing data moves only inside `DATA` payloads as opaque bytes;
   interpretation is the protocol layer's job (later issues).
 
+See `ADAPTER_DISCOVERY.md` for host enumeration (serial by-id/tty scanning, explicit endpoint lists) and the serial/TCP transports.
+
 ## The three paths
 
 | Path | Kind | Transport | Status |
