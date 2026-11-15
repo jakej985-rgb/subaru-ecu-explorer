@@ -9,9 +9,14 @@ import (
 	"strings"
 )
 
-// CatalogSchemaVersion versions the hardware profile and compatibility
-// catalog document formats.
+// CatalogSchemaVersion versions the hardware profile document format.
 const CatalogSchemaVersion = "1.0.0"
+
+// CompatibilityCatalogSchemaVersion versions the compatibility catalog
+// document format. 2.0.0 replaced the production-range applicability fact
+// with structured Applicability and free-text conflicts with ConflictRecord;
+// 1.0.0 catalogs must be migrated (see docs/HARDWARE_CATALOG.md).
+const CompatibilityCatalogSchemaVersion = "2.0.0"
 
 // ModuleKind identifies the vehicle module a catalog entry applies to.
 type ModuleKind string
@@ -259,8 +264,8 @@ func distinctEvidenceSources(evidence []Evidence) int {
 
 func (c CompatibilityCatalog) Validate() error {
 	var problems []error
-	if c.SchemaVersion != CatalogSchemaVersion {
-		problems = append(problems, fmt.Errorf("schemaVersion must be %q", CatalogSchemaVersion))
+	if c.SchemaVersion != CompatibilityCatalogSchemaVersion {
+		problems = append(problems, fmt.Errorf("schemaVersion must be %q", CompatibilityCatalogSchemaVersion))
 	}
 	if strings.TrimSpace(c.ID) == "" {
 		problems = append(problems, errors.New("id is required"))
