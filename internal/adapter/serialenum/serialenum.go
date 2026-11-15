@@ -44,6 +44,10 @@ func (e *Enumerator) Enumerate(ctx context.Context) ([]adapter.Candidate, error)
 	var out []adapter.Candidate
 	var errs []error
 
+	// covered holds resolved tty paths already represented by a by-id
+	// candidate, so one physical device yields one candidate (and one
+	// ownership ID in the Manager).
+	covered := map[string]bool{}
 	byIDDir := filepath.Join(e.Root, "serial", "by-id")
 	entries, err := os.ReadDir(byIDDir)
 	switch {
@@ -54,15 +58,20 @@ func (e *Enumerator) Enumerate(ctx context.Context) ([]adapter.Candidate, error)
 			}
 			name := ent.Name()
 			path := filepath.Join(byIDDir, name)
+			meta := map[string]string{
+				"stable": "true",
+				"source": "by-id",
+			}
+			if target, err := filepath.EvalSymlinks(path); err == nil {
+				covered[target] = true
+				meta["target"] = target
+			}
 			out = append(out, adapter.Candidate{
 				Info: adapter.Info{
 					ID:   "serial/by-id/" + name,
 					Path: path,
 				},
-				Metadata: map[string]string{
-					"stable": "true",
-					"source": "by-id",
-				},
+				Metadata: meta,
 			})
 		}
 	case errors.Is(err, fs.ErrNotExist):
@@ -87,10 +96,14 @@ func (e *Enumerator) Enumerate(ctx context.Context) ([]adapter.Candidate, error)
 			if !matched || ent.IsDir() {
 				continue
 			}
+			ttyPath := filepath.Join(e.Root, name)
+			if resolved, err := filepath.EvalSymlinks(ttyPath); err == nil && covered[resolved] {
+				continue // already listed under its stable by-id name
+			}
 			out = append(out, adapter.Candidate{
 				Info: adapter.Info{
 					ID:   "serial/" + name,
-					Path: filepath.Join(e.Root, name),
+					Path: ttyPath,
 				},
 				Metadata: map[string]string{
 					"stable": "false",

@@ -37,8 +37,14 @@ func TestEnumerateByIDAndTTY(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cands) != 3 {
-		t.Fatalf("expected 3 candidates (1 by-id + 2 tty), got %d: %+v", len(cands), cands)
+	// ttyUSB0 is an alias of the by-id link and must be collapsed into it.
+	if len(cands) != 2 {
+		t.Fatalf("expected 2 candidates (1 by-id + ttyACM0), got %d: %+v", len(cands), cands)
+	}
+	for _, c := range cands {
+		if c.Info.ID == "serial/ttyUSB0" {
+			t.Fatal("ttyUSB0 alias of a by-id device must not be listed separately")
+		}
 	}
 
 	byIDCand := cands[0]

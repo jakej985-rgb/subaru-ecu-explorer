@@ -89,12 +89,23 @@ func (s *session) Health() adapter.Health {
 }
 
 // transport is a serial Transport with poll-based deadlines.
+//
+// Close wakes in-flight polls through a self-pipe, and life guards the
+// descriptor lifetime: I/O holds a read lock across poll+syscall while Close
+// takes the write lock before releasing fds, so no operation can touch a
+// closed (and possibly reused) descriptor.
 type transport struct {
-	fd       int
+	fd    int
+	wakeR int
+	wakeW int
+	life  sync.RWMutex
+
 	mu       sync.Mutex
 	deadline time.Time
 	closed   bool
 }
+
+const pollTerminal = unix.POLLHUP | unix.POLLERR | unix.POLLNVAL
 
 func openSerial(path string, baud uint32) (*transport, error) {
 	if _, err := os.Stat(path); err != nil {
@@ -106,13 +117,15 @@ func openSerial(path string, baud uint32) (*transport, error) {
 		}
 		return nil, err
 	}
-	fd, err := unix.Open(path, unix.O_RDWR|unix.O_NOCTTY|unix.O_NONBLOCK, 0)
+	fd, err := unix.Open(path, unix.O_RDWR|unix.O_NOCTTY|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
 	if err != nil {
 		switch {
 		case errors.Is(err, unix.EACCES), errors.Is(err, unix.EPERM):
 			return nil, fmt.Errorf("%w: %s", adapter.ErrPermission, path)
 		case errors.Is(err, unix.ENOENT):
 			return nil, fmt.Errorf("%w: %s", adapter.ErrNotFound, path)
+		case errors.Is(err, unix.EBUSY):
+			return nil, fmt.Errorf("%w: %s", adapter.ErrBusy, path)
 		default:
 			return nil, fmt.Errorf("open %s: %w", path, err)
 		}
@@ -122,6 +135,18 @@ func openSerial(path string, baud uint32) (*transport, error) {
 		_ = unix.Close(fd)
 		return nil, err
 	}
+	// Exclusive mode: further opens of this tty (via any alias path) fail
+	// with EBUSY, so one physical device never has two owners.
+	if err := unix.IoctlSetInt(fd, unix.TIOCEXCL, 0); err != nil {
+		_ = unix.Close(fd)
+		return nil, fmt.Errorf("exclusive open %s: %w", path, err)
+	}
+	var p [2]int
+	if err := unix.Pipe2(p[:], unix.O_NONBLOCK|unix.O_CLOEXEC); err != nil {
+		_ = unix.Close(fd)
+		return nil, fmt.Errorf("wake pipe: %w", err)
+	}
+	t.wakeR, t.wakeW = p[0], p[1]
 	return t, nil
 }
 
@@ -182,52 +207,67 @@ func (t *transport) SetDeadline(d time.Time) error {
 	return nil
 }
 
-func (t *transport) wait(events int16) error {
-	t.mu.Lock()
-	d := t.deadline
-	closed := t.closed
-	t.mu.Unlock()
-	if closed {
-		return adapter.ErrClosed
-	}
-	var timeout time.Duration
-	if !d.IsZero() {
-		remaining := time.Until(d)
-		if remaining <= 0 {
-			return adapter.ErrTimeout
-		}
-		timeout = remaining
-	} else {
-		timeout = 24 * time.Hour
-	}
-	ms := int(timeout / time.Millisecond)
-	if ms < 1 {
-		ms = 1
-	}
-	fds := []unix.PollFd{{Fd: int32(t.fd), Events: events}}
+// wait polls the device for events alongside the close wake pipe. It
+// returns the device revents, ErrClosed if Close was signalled, or
+// ErrTimeout on deadline expiry. Callers must hold t.life.RLock.
+func (t *transport) wait(events int16) (int16, error) {
 	for {
+		t.mu.Lock()
+		d := t.deadline
+		closed := t.closed
+		t.mu.Unlock()
+		if closed {
+			return 0, adapter.ErrClosed
+		}
+		ms := -1 // no deadline: block until ready or woken by Close
+		if !d.IsZero() {
+			remaining := time.Until(d)
+			if remaining <= 0 {
+				return 0, adapter.ErrTimeout
+			}
+			ms = int(remaining / time.Millisecond)
+			if ms < 1 {
+				ms = 1
+			}
+		}
+		fds := []unix.PollFd{
+			{Fd: int32(t.fd), Events: events},
+			{Fd: int32(t.wakeR), Events: unix.POLLIN},
+		}
 		n, err := unix.Poll(fds, ms)
 		if err != nil {
 			if errors.Is(err, unix.EINTR) {
-				continue
+				continue // recompute remaining time
 			}
-			return err
+			return 0, err
+		}
+		if fds[1].Revents != 0 {
+			return 0, adapter.ErrClosed
 		}
 		if n == 0 {
-			return adapter.ErrTimeout
+			return 0, adapter.ErrTimeout
 		}
-		return nil
+		return fds[0].Revents, nil
 	}
 }
 
 func (t *transport) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	t.life.RLock()
+	defer t.life.RUnlock()
 	for {
-		if err := t.wait(unix.POLLIN); err != nil {
+		rev, err := t.wait(unix.POLLIN)
+		if err != nil {
 			return 0, err
 		}
 		n, err := unix.Read(t.fd, p)
 		if err != nil {
 			if errors.Is(err, unix.EAGAIN) || errors.Is(err, unix.EWOULDBLOCK) {
+				if rev&pollTerminal != 0 {
+					return 0, adapter.ErrClosed
+				}
 				continue
 			}
 			if errors.Is(err, unix.EIO) {
@@ -235,24 +275,45 @@ func (t *transport) Read(p []byte) (int, error) {
 			}
 			return 0, err
 		}
+		if n == 0 {
+			// With O_NONBLOCK an empty line yields EAGAIN, so a zero-byte
+			// read means hangup/EOF. Buffered bytes are returned first.
+			return 0, adapter.ErrClosed
+		}
 		return n, nil
 	}
 }
 
+// Write writes all of p, polling under backpressure until complete, the
+// deadline expires, or the transport fails. A short count always carries a
+// non-nil error.
 func (t *transport) Write(p []byte) (int, error) {
-	for {
-		if err := t.wait(unix.POLLOUT); err != nil {
-			return 0, err
+	t.life.RLock()
+	defer t.life.RUnlock()
+	total := 0
+	for total < len(p) {
+		rev, err := t.wait(unix.POLLOUT)
+		if err != nil {
+			return total, err
 		}
-		n, err := unix.Write(t.fd, p)
+		if rev&pollTerminal != 0 {
+			return total, adapter.ErrClosed
+		}
+		n, err := unix.Write(t.fd, p[total:])
+		if n > 0 {
+			total += n
+		}
 		if err != nil {
 			if errors.Is(err, unix.EAGAIN) || errors.Is(err, unix.EWOULDBLOCK) {
 				continue
 			}
-			return 0, err
+			if errors.Is(err, unix.EIO) {
+				return total, adapter.ErrClosed
+			}
+			return total, err
 		}
-		return n, nil
 	}
+	return total, nil
 }
 
 func (t *transport) Close() error {
@@ -263,5 +324,14 @@ func (t *transport) Close() error {
 	}
 	t.closed = true
 	t.mu.Unlock()
-	return unix.Close(t.fd)
+	// Wake any in-flight poll; the byte is never drained so later polls
+	// also return immediately.
+	_, _ = unix.Write(t.wakeW, []byte{1})
+	// Wait for in-flight I/O to exit before releasing descriptors.
+	t.life.Lock()
+	defer t.life.Unlock()
+	err := unix.Close(t.fd)
+	_ = unix.Close(t.wakeR)
+	_ = unix.Close(t.wakeW)
+	return err
 }
