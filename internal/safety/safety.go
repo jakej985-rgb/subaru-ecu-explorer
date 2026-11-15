@@ -34,14 +34,14 @@ const (
 // Prohibited operations. These are defined so callers and tests can refer
 // to them by name; they are never in any allowlist.
 const (
-	OpWrite           Operation = "write"
-	OpClearDTC        Operation = "clear-dtc"
-	OpActuatorTest    Operation = "actuator-test"
-	OpProgramming     Operation = "programming"
-	OpFlash           Operation = "flash"
-	OpSecurityAccess  Operation = "security-access"
-	OpImmobilizer     Operation = "immobilizer"
-	OpPinProbe        Operation = "pin-probe"
+	OpWrite          Operation = "write"
+	OpClearDTC       Operation = "clear-dtc"
+	OpActuatorTest   Operation = "actuator-test"
+	OpProgramming    Operation = "programming"
+	OpFlash          Operation = "flash"
+	OpSecurityAccess Operation = "security-access"
+	OpImmobilizer    Operation = "immobilizer"
+	OpPinProbe       Operation = "pin-probe"
 )
 
 // DefaultAllowlist is the set of operations the project permits.
