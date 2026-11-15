@@ -29,7 +29,14 @@ type Monitor struct {
 	disconnectOnFault bool
 
 	mu   sync.Mutex
-	last map[string]HealthState
+	last map[string]tracked
+}
+
+// tracked is the last observed state of one specific session.
+type tracked struct {
+	session Session
+	kind    Kind
+	state   HealthState
 }
 
 // NewMonitor returns a monitor for mgr. interval <= 0 defaults to 5s.
@@ -44,7 +51,7 @@ func NewMonitor(mgr *Manager, interval time.Duration, probe ProbeFunc, disconnec
 		interval:          interval,
 		probe:             probe,
 		disconnectOnFault: disconnectOnFault,
-		last:              map[string]HealthState{},
+		last:              map[string]tracked{},
 	}
 }
 
@@ -64,6 +71,10 @@ func (mn *Monitor) Check(ctx context.Context) []HealthEvent {
 		detail := h.Detail
 		if mn.probe != nil {
 			if err := mn.probe(ctx, s); err != nil {
+				if ctx.Err() != nil {
+					// Monitor cancelled, not a device fault.
+					return events
+				}
 				to = HealthFault
 				detail = err.Error()
 			}
@@ -72,28 +83,37 @@ func (mn *Monitor) Check(ctx context.Context) []HealthEvent {
 			to = HealthUnknown
 		}
 
+		kind := s.Info().Kind
 		mn.mu.Lock()
-		from, seen := mn.last[id]
-		mn.last[id] = to
+		prev, seen := mn.last[id]
+		mn.last[id] = tracked{session: s, kind: kind, state: to}
 		mn.mu.Unlock()
-		if !seen {
-			from = HealthUnknown
+		from := HealthUnknown
+		if seen {
+			if prev.session != s {
+				// Reconnected under the same ID: the old session closed.
+				events = append(events, HealthEvent{ID: id, Kind: prev.kind, From: prev.state, To: HealthClosed, Detail: "session replaced"})
+			} else {
+				from = prev.state
+			}
 		}
 		if to != from {
-			events = append(events, HealthEvent{ID: id, Kind: s.Info().Kind, From: from, To: to, Detail: detail})
+			events = append(events, HealthEvent{ID: id, Kind: kind, From: from, To: to, Detail: detail})
 		}
 		if to == HealthFault && mn.disconnectOnFault {
-			_ = mn.mgr.Disconnect(id)
+			_ = mn.mgr.disconnectSession(id, s)
 			mn.mu.Lock()
 			delete(mn.last, id)
 			mn.mu.Unlock()
+			events = append(events, HealthEvent{ID: id, Kind: kind, From: to, To: HealthClosed, Detail: "disconnected on fault"})
 		}
 	}
-	// Forget sessions that disappeared.
+	// Report and forget sessions that disappeared or were replaced.
 	mn.mu.Lock()
-	for id := range mn.last {
-		if mn.mgr.Session(id) == nil {
+	for id, prev := range mn.last {
+		if mn.mgr.Session(id) != prev.session {
 			delete(mn.last, id)
+			events = append(events, HealthEvent{ID: id, Kind: prev.kind, From: prev.state, To: HealthClosed, Detail: "disconnected"})
 		}
 	}
 	mn.mu.Unlock()

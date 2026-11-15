@@ -137,6 +137,74 @@ func TestShutdownClosesAllAndBlocksConnect(t *testing.T) {
 	}
 }
 
+func TestShutdownWaitsForInFlightOpen(t *testing.T) {
+	m := adapter.NewManager()
+	d := fake.NewDriver(adapter.KindELM327, cand(adapter.KindELM327, "elm-a"))
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	d.SetOpenHook(func() {
+		close(entered)
+		<-release
+	})
+	m.RegisterDriver(d)
+
+	connErr := make(chan error, 1)
+	go func() {
+		_, err := m.Connect(context.Background(), cand(adapter.KindELM327, "elm-a"))
+		connErr <- err
+	}()
+	<-entered
+
+	shutDone := make(chan error, 1)
+	go func() { shutDone <- m.Shutdown(context.Background()) }()
+
+	select {
+	case <-shutDone:
+		t.Fatal("Shutdown returned while Open was still in flight")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(release)
+	if err := <-shutDone; err != nil {
+		t.Fatalf("shutdown: %v", err)
+	}
+	if err := <-connErr; !errors.Is(err, adapter.ErrClosed) {
+		t.Fatalf("expected ErrClosed from raced connect, got %v", err)
+	}
+	sessions := d.Sessions()
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 opened session, got %d", len(sessions))
+	}
+	if _, err := sessions[0].Write([]byte("x")); err == nil {
+		t.Fatal("session opened during shutdown must be closed before Shutdown returns")
+	}
+}
+
+func TestShutdownCancelledStillClosesAll(t *testing.T) {
+	m := adapter.NewManager()
+	m.RegisterDriver(fake.NewDriver(adapter.KindELM327, cand(adapter.KindELM327, "elm-a")))
+	m.RegisterDriver(fake.NewDriver(adapter.KindArduino, cand(adapter.KindArduino, "mega-1")))
+	s1, err := m.Connect(context.Background(), cand(adapter.KindELM327, "elm-a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s2, err := m.Connect(context.Background(), cand(adapter.KindArduino, "mega-1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := m.Shutdown(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+	for _, s := range []adapter.Session{s1, s2} {
+		if _, err := s.Write([]byte("x")); err == nil {
+			t.Fatal("cancelled shutdown must still close every session")
+		}
+	}
+}
+
 func TestDisconnectLeavesNoActiveIO(t *testing.T) {
 	m := adapter.NewManager()
 	d := fake.NewDriver(adapter.KindELM327, cand(adapter.KindELM327, "elm-a"))
@@ -196,6 +264,39 @@ func TestMonitorHealthTransitions(t *testing.T) {
 	}
 	if len(m.ConnectedIDs()) != 0 {
 		t.Fatal("faulted device must be released")
+	}
+}
+
+func TestMonitorReportsReconnectAndClose(t *testing.T) {
+	m := adapter.NewManager()
+	m.RegisterDriver(fake.NewDriver(adapter.KindELM327, cand(adapter.KindELM327, "elm-a")))
+	if _, err := m.Connect(context.Background(), cand(adapter.KindELM327, "elm-a")); err != nil {
+		t.Fatal(err)
+	}
+	mn := adapter.NewMonitor(m, time.Hour, nil, false)
+	mn.Check(context.Background()) // baseline ready
+
+	// Reconnect under the same ID between checks.
+	if err := m.Disconnect("elm-a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Connect(context.Background(), cand(adapter.KindELM327, "elm-a")); err != nil {
+		t.Fatal(err)
+	}
+	events := mn.Check(context.Background())
+	if len(events) != 2 ||
+		events[0].To != adapter.HealthClosed ||
+		events[1].From != adapter.HealthUnknown || events[1].To != adapter.HealthReady {
+		t.Fatalf("expected closed then unknown->ready, got %+v", events)
+	}
+
+	// Plain disconnect is reported as closed.
+	if err := m.Disconnect("elm-a"); err != nil {
+		t.Fatal(err)
+	}
+	events = mn.Check(context.Background())
+	if len(events) != 1 || events[0].To != adapter.HealthClosed {
+		t.Fatalf("expected closed event, got %+v", events)
 	}
 }
 

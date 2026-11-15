@@ -168,8 +168,13 @@ type Driver struct {
 	discoverErr  error
 	openErr      error
 	openFailures int // fail the next N Open calls with openErr (or a generic error)
+	openHook     func()
 	sessions     []*Session
 }
+
+// SetOpenHook installs a function called at the start of every Open, before
+// any failure injection. Tests use it to block Open deterministically.
+func (d *Driver) SetOpenHook(fn func()) { d.openHook = fn }
 
 // NewDriver returns a fake driver for kind with the given candidates.
 func NewDriver(kind adapter.Kind, candidates ...adapter.Candidate) *Driver {
@@ -207,12 +212,18 @@ func (d *Driver) Open(ctx context.Context, c adapter.Candidate) (adapter.Session
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if d.openErr != nil {
-		return nil, d.openErr
+	if d.openHook != nil {
+		d.openHook()
 	}
 	if d.openFailures > 0 {
 		d.openFailures--
+		if d.openErr != nil {
+			return nil, d.openErr
+		}
 		return nil, errors.New("fake: transient open failure")
+	}
+	if d.openErr != nil {
+		return nil, d.openErr
 	}
 	for _, cand := range d.candidates {
 		if cand.Info.ID == c.Info.ID {
