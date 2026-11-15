@@ -211,7 +211,7 @@ func TestSchemaVersionEvolution(t *testing.T) {
 		"trim-config.schema.json":           ConfigSchemaVersion,
 		"vehicle-configuration.schema.json": ConfigSchemaVersion,
 		"hardware-profile.schema.json":      CatalogSchemaVersion,
-		"hardware-catalog.schema.json":      CatalogSchemaVersion,
+		"hardware-catalog.schema.json":      CompatibilityCatalogSchemaVersion,
 	}
 	for file, want := range checks {
 		data, err := os.ReadFile(filepath.Join("..", "..", "schemas", file))
