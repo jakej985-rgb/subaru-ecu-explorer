@@ -11,7 +11,7 @@ reviewer can distinguish evidence from research gaps.
 
 | Source | What it supports | Citation |
 |--------|------------------|----------|
-| SAE J1962 (generic OBD-II DLC pinout) | Standard pin roles: pin 16 +12 V, pins 3–5 ground, pin 7 K-line, pin 15 L-line, pins 6/14 CAN, pins 1/2 J1850, pins 8–13 manufacturer-discretionary | `data/definitions/connectors/1999-usdm-legacy-dlc.json`; `docs/OBD2_INTERFACE.md` |
+| SAE J1962 (generic OBD-II DLC pinout) | Standard pin roles: pin 16 +12 V, pins 4/5 ground, pin 7 K-line, pin 15 L-line, pins 6/14 CAN, pins 2/10 J1850, pins 1, 3, 8, 9, 11–13 manufacturer-discretionary | `data/definitions/connectors/1999-usdm-legacy-dlc.json`; `docs/OBD2_INTERFACE.md` |
 | Factory service documentation (1999 USDM Legacy, reviewed summary) | A 16-pin DLC is shared by OBD-II and Subaru SSM; SSM terminals are identified separately from ISO 9141 K-line; unsupported equipment must not be connected to the SSM circuit | `docs/SSM_PROTOCOL.md` §"1999 USDM Legacy connector notes" |
 | FreeSSM project documentation | SSM2 = K-line physical layer (~4800 baud, 12 V TTL, DLC pin 7 per community cross-reference); SSM1 = two-wire 5 V TTL on manufacturer-discretionary pins | https://github.com/Comer352L/FreeSSM ; `docs/SSM_INTERFACE.md` |
 | Community sources (SubaruFanClub.cz thread) | SSM1 on pins 12/13 at 1953 baud 8E1 5 V TTL; SSM2 on pin 7 | **UNVERIFIED for this vehicle — community only** |
@@ -42,16 +42,15 @@ half-duplex; direction alternates).
 | DLC pin | Vehicle signal | Evidence | Interface connection | Protection chain | Status |
 |--------:|----------------|----------|----------------------|------------------|--------|
 | 16 | +12 V battery (unswitched) | CONFIRMED (SAE J1962 role; vehicle population unverified) | J1 → fuse F1 → reverse-polarity D1 → TVS1 → bulk C1 → buck D2 | 2 A fuse, reverse-polarity stage, TVS ≥16 V standoff, bulk cap | CONFIRMED design path; vehicle verification pending |
-| 3 | Chassis ground | CONFIRMED (standard role) | J1 → GND_STAR | star ground | CONFIRMED design path |
-| 4 | Ground (subclass TBD) | CONFIRMED role / subclass UNRESOLVED | J1 → GND_STAR | star ground | CONFIRMED design path |
+| 4 | Chassis ground (subclass TBD) | CONFIRMED role / subclass UNRESOLVED | J1 → GND_STAR | star ground | CONFIRMED design path |
 | 5 | Signal ground (subclass TBD) | CONFIRMED role / subclass UNRESOLVED | J1 → GND_STAR | star ground | CONFIRMED design path |
 | 7 | ISO 9141 K-line (OBD-II + SSM2 candidate) | CONFIRMED standard role; SSM2 use INFERRED | J2 → PTC F2 → TVS2 → R1 → U1 (MC33290 K) → UART1 (Mega 18/19) | 500 mA PTC, TVS VRWM≥16 V, series R per datasheet | CONFIRMED design path; SSM2 function INFERRED |
 | 15 | ISO 9141 L-line | CONFIRMED standard role | J3 → same protection → second transceiver footprint | same as pin 7 | FOOTPRINT ONLY (unpopulated v0.1) |
 | 12 | SSM1 RX? (5 V TTL) | **UNRESOLVED** — community sources only | J4 → PTC + TVS + series R → UART2 header | 500 mA PTC, 5 V-rated TVS, series R | UNRESOLVED — do not connect until factory-verified |
 | 13 | SSM1 TX? (5 V TTL) | **UNRESOLVED** — community sources only | J4 → same | same | UNRESOLVED |
 | 6/14 | CAN-H/L | CONFIRMED standard roles; not expected 1999 | J5 footprint only | — | UNPOPULATED |
-| 1/2 | J1850 | CONFIRMED standard roles; not expected | not connected | — | NOT CONNECTED |
-| 8–11 | manufacturer-discretionary | role CONFIRMED / function UNRESOLVED | **not connected** | — | PROHIBITED until identified |
+| 2/10 | J1850 bus+ / J1850 PWM bus− | CONFIRMED standard roles; not expected | not connected | — | NOT CONNECTED |
+| 1, 3, 8, 9, 11 | manufacturer-discretionary (pin 3 is **not** a standard ground) | role CONFIRMED / function UNRESOLVED | **not connected** | — | PROHIBITED until identified |
 
 ## K-line signal path detail (SSM2 / ISO 9141)
 
