@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "vag-com-kkl-ftdi-serial",
+  "displayName": "VAG-COM KKL USB cable with FTDI chip (K-line)",
+  "kind": "subaru-ssm",
+  "transport": {
+    "value": "usb-serial-ftdi",
+    "status": "inferred",
+    "evidence": [
+      {
+        "source": "DIY Subaru diagnostics notes",
+        "reference": "https://www.diysubaru.org/en/control-systems",
+        "description": "Lists VAG-COM KKL cables with FTDI chips as SSM K-line adaptors; clone cables vary widely in line drivers"
+      }
+    ],
+    "notes": "FTDI-based clones are common but internally inconsistent; exact cable revision must be verified before use"
+  },
+  "protocol": {
+    "value": "subaru-ssm2-k-line",
+    "status": "inferred",
+    "evidence": [
+      {
+        "source": "FreeSSM / community documentation",
+        "description": "K-line SSM2 path shared with ISO 9141 pin 7; baud and level details per FreeSSM serial settings",
+        "reference": "https://github.com/Comer352L/FreeSSM"
+      }
+    ],
+    "notes": "Candidate only; clone-cable electrical quality is unverified and must pass the protection review in docs/OBD2_INTERFACE.md"
+  },
+  "readOnly": {
+    "value": true,
+    "status": "confirmed",
+    "evidence": [
+      {
+        "source": "project safety policy",
+        "reference": "docs/SAFETY.md"
+      }
+    ]
+  },
+  "notes": "Lower-confidence candidate than a documented Tactrix interface. Unknown hardware is rejected by the adapter layer until verified."
+}

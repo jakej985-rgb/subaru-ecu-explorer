@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "tactrix-openport-13",
+  "displayName": "Tactrix OpenPort 1.3 (USB K-line interface)",
+  "kind": "subaru-ssm",
+  "transport": {
+    "value": "usb-serial-ftdi",
+    "status": "confirmed",
+    "evidence": [
+      {
+        "source": "OpenPort 1.3 interface schematic",
+        "reference": "https://evoecu.logic.net/mirror/ecuflash/cable_schematics/openport13.pdf",
+        "description": "FT232R USB-serial with K/L line drivers and OBD-II connector"
+      }
+    ]
+  },
+  "protocol": {
+    "value": "subaru-ssm2-k-line",
+    "status": "inferred",
+    "evidence": [
+      {
+        "source": "FreeSSM / RomRaider field reports",
+        "description": "OpenPort 1.3 is a documented SSM K-line interface for pre-CAN Subaru ECUs; 4800 baud serial observed in the wild",
+        "reference": "https://github.com/RomRaider/RomRaider/issues/217"
+      }
+    ],
+    "notes": "Candidate only. Compatibility with the exact 1999 USDM Legacy ECU is unverified; OpenPort 2.0 targets CAN-era vehicles and is not required here."
+  },
+  "readOnly": {
+    "value": true,
+    "status": "confirmed",
+    "evidence": [
+      {
+        "source": "project safety policy",
+        "reference": "docs/SAFETY.md"
+      }
+    ],
+    "notes": "Project operates read-only regardless of adapter capability"
+  },
+  "notes": "Candidate SSM interface pending bench and vehicle verification. USB enumeration is not proof of SSM compatibility."
+}

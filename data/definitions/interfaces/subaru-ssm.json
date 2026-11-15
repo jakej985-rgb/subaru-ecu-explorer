@@ -4,8 +4,16 @@
   "displayName": "Subaru SSM diagnostic interface",
   "kind": "subaru-ssm",
   "transport": {
-    "status": "unknown",
-    "notes": "Physical transport (K-line/L-line/serial details) requires Phase 2 hardware research"
+    "value": "k-line-serial",
+    "status": "inferred",
+    "evidence": [
+      {
+        "source": "FreeSSM project documentation",
+        "reference": "https://github.com/Comer352L/FreeSSM",
+        "description": "SSM2 uses a single-wire K-line shared with the OBD-II ISO 9141 path (DLC pin 7); SSM1/SSM0 use manufacturer-discretionary pins with different electrical levels"
+      }
+    ],
+    "notes": "SSM2 K-line path inferred for the target era; SSM1 pins 12/13 require 5V TTL hardware and remain unverified on this vehicle"
   },
   "protocol": {
     "value": "subaru-ssm",
@@ -28,5 +36,5 @@
       }
     ]
   },
-  "notes": "Interface path only. SSM access does not establish which modules exist on the target vehicle."
+  "notes": "Interface path only. SSM access does not establish which modules exist on the target vehicle. The generic ELM327 OBD-II adapter is NOT an SSM interface."
 }
