@@ -16,6 +16,7 @@ type Manager struct {
 	mu       sync.Mutex
 	drivers  map[Kind]Driver
 	sessions map[string]*managed // key: candidate Info.ID
+	shutdown bool
 }
 
 type sessionState uint8
@@ -33,6 +34,9 @@ type managed struct {
 	session Session
 	kind    Kind
 	state   sessionState
+	// done is closed when an in-flight transition (opening or closing)
+	// completes, so Shutdown can wait for it.
+	done chan struct{}
 }
 
 // NewManager returns an empty adapter manager.
@@ -94,7 +98,65 @@ func (m *Manager) Discover(ctx context.Context) ([]Candidate, error) {
 // Connect opens an exclusively owned session for candidate. It fails with
 // ErrBusy if the candidate ID is already connected through this manager.
 func (m *Manager) Connect(ctx context.Context, candidate Candidate) (Session, error) {
+	return m.connect(ctx, candidate)
+}
+
+// ReconnectPolicy controls ConnectWithPolicy retries. A zero value uses
+// DefaultReconnectPolicy.
+type ReconnectPolicy struct {
+	// MaxAttempts is the total number of Open attempts (>=1).
+	MaxAttempts int
+	// Backoff is the delay between attempts.
+	Backoff time.Duration
+}
+
+// DefaultReconnectPolicy retries transient open failures three times with
+// a short backoff.
+var DefaultReconnectPolicy = ReconnectPolicy{MaxAttempts: 3, Backoff: 250 * time.Millisecond}
+
+// permanent reports whether err must not be retried.
+func permanent(err error) bool {
+	return errors.Is(err, ErrBusy) ||
+		errors.Is(err, ErrUnsupported) ||
+		errors.Is(err, ErrPermission) ||
+		errors.Is(err, ErrProtocol) ||
+		errors.Is(err, ErrClosed)
+}
+
+// ConnectWithPolicy connects like Connect but retries transient failures
+// (missing device, I/O errors) according to policy. Context cancellation
+// and permanent errors abort immediately.
+func (m *Manager) ConnectWithPolicy(ctx context.Context, candidate Candidate, policy ReconnectPolicy) (Session, error) {
+	if policy.MaxAttempts <= 0 {
+		policy = DefaultReconnectPolicy
+	}
+	var err error
+	for attempt := 0; attempt < policy.MaxAttempts; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(policy.Backoff):
+			}
+		}
+		var s Session
+		s, err = m.connect(ctx, candidate)
+		if err == nil {
+			return s, nil
+		}
+		if permanent(err) || ctx.Err() != nil {
+			return nil, err
+		}
+	}
+	return nil, err
+}
+
+func (m *Manager) connect(ctx context.Context, candidate Candidate) (Session, error) {
 	m.mu.Lock()
+	if m.shutdown {
+		m.mu.Unlock()
+		return nil, ErrClosed
+	}
 	d, ok := m.drivers[candidate.Info.Kind]
 	if !ok {
 		m.mu.Unlock()
@@ -105,42 +167,111 @@ func (m *Manager) Connect(ctx context.Context, candidate Candidate) (Session, er
 		m.mu.Unlock()
 		return nil, fmt.Errorf("%w: %s", ErrBusy, candidate.Info.ID)
 	}
-	res := &managed{kind: candidate.Info.Kind, state: stateOpening}
+	res := &managed{kind: candidate.Info.Kind, state: stateOpening, done: make(chan struct{})}
 	m.sessions[candidate.Info.ID] = res
 	m.mu.Unlock()
 
 	s, err := d.Open(ctx, candidate)
 
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if err != nil {
 		delete(m.sessions, candidate.Info.ID)
+		close(res.done)
+		m.mu.Unlock()
 		return nil, err
+	}
+	if m.shutdown {
+		// Shutdown raced the open: close immediately, never expose it. The
+		// reservation is held until Close returns so Shutdown can wait.
+		m.mu.Unlock()
+		_ = s.Close()
+		m.mu.Lock()
+		delete(m.sessions, candidate.Info.ID)
+		close(res.done)
+		m.mu.Unlock()
+		return nil, ErrClosed
 	}
 	res.session = s
 	res.state = stateActive
+	close(res.done)
+	m.mu.Unlock()
 	return s, nil
 }
 
-// Disconnect closes the session for id, if any, and releases ownership only
-// after Close returns. It is safe to call for unknown, still-opening, or
-// already-disconnected IDs (those are no-ops).
-func (m *Manager) Disconnect(id string) error {
+// Shutdown closes every active session and prevents new connections. It is
+// safe to call multiple times and from any goroutine; session close errors
+// are joined into the result. Shutdown also waits for in-flight opens
+// (which close their session once Open returns) and in-flight disconnects.
+// If ctx ends first, Shutdown returns ctx.Err(); those operations still
+// finish and close their adapters on their own. After Shutdown, Connect
+// fails with ErrClosed.
+func (m *Manager) Shutdown(ctx context.Context) error {
+	m.mu.Lock()
+	if m.shutdown {
+		m.mu.Unlock()
+		return nil
+	}
+	m.shutdown = true
+	sessions := make([]Session, 0, len(m.sessions))
+	var pending []chan struct{}
+	for id, man := range m.sessions {
+		if man.state == stateActive && man.session != nil {
+			sessions = append(sessions, man.session)
+			delete(m.sessions, id)
+			continue
+		}
+		// Opening or closing: the owning goroutine releases it.
+		pending = append(pending, man.done)
+	}
+	m.mu.Unlock()
+
+	var errs []error
+	for _, s := range sessions {
+		// Always close every captured session: their reservations are
+		// already gone, so skipping one would strand an open adapter.
+		if err := s.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	for _, ch := range pending {
+		select {
+		case <-ch:
+		case <-ctx.Done():
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
+}
+
+// disconnectSession disconnects id only if it is still owned by exactly s.
+// A nil s matches any active session.
+func (m *Manager) disconnectSession(id string, s Session) error {
 	m.mu.Lock()
 	man, ok := m.sessions[id]
-	if !ok || man.state != stateActive {
+	if !ok || man.state != stateActive || (s != nil && man.session != s) {
 		m.mu.Unlock()
 		return nil
 	}
 	man.state = stateClosing
+	man.done = make(chan struct{})
 	m.mu.Unlock()
 
 	err := man.session.Close()
 
 	m.mu.Lock()
 	delete(m.sessions, id)
+	close(man.done)
 	m.mu.Unlock()
 	return err
+}
+
+// Disconnect closes the session for id, if any, and releases ownership only
+// after Close returns. It is safe to call for unknown, still-opening, or
+// already-disconnected IDs (those are no-ops).
+func (m *Manager) Disconnect(id string) error {
+	return m.disconnectSession(id, nil)
 }
 
 // Session returns the active session for id, or nil.

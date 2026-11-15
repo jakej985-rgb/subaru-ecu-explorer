@@ -5,6 +5,7 @@ package fake
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"sync"
 	"time"
@@ -155,14 +156,25 @@ func (s *Session) Info() adapter.Info                 { return s.info }
 func (s *Session) Capabilities() adapter.Capabilities { return s.caps }
 func (s *Session) Health() adapter.Health             { return s.health }
 
+// SetHealth overrides the reported health state (test control).
+func (s *Session) SetHealth(h adapter.Health) {
+	s.health = h
+}
+
 // Driver is a scriptable fake adapter.Driver.
 type Driver struct {
-	kind        adapter.Kind
-	candidates  []adapter.Candidate
-	discoverErr error
-	openErr     error
-	sessions    []*Session
+	kind         adapter.Kind
+	candidates   []adapter.Candidate
+	discoverErr  error
+	openErr      error
+	openFailures int // fail the next N Open calls with openErr (or a generic error)
+	openHook     func()
+	sessions     []*Session
 }
+
+// SetOpenHook installs a function called at the start of every Open, before
+// any failure injection. Tests use it to block Open deterministically.
+func (d *Driver) SetOpenHook(fn func()) { d.openHook = fn }
 
 // NewDriver returns a fake driver for kind with the given candidates.
 func NewDriver(kind adapter.Kind, candidates ...adapter.Candidate) *Driver {
@@ -174,6 +186,10 @@ func (d *Driver) SetDiscoverError(err error) { d.discoverErr = err }
 
 // SetOpenError makes Open fail.
 func (d *Driver) SetOpenError(err error) { d.openErr = err }
+
+// SetOpenFailures makes the next n Open calls fail. If no open error was
+// set, a generic transient error is used.
+func (d *Driver) SetOpenFailures(n int) { d.openFailures = n }
 
 // Sessions returns sessions created by Open.
 func (d *Driver) Sessions() []*Session { return d.sessions }
@@ -195,6 +211,16 @@ func (d *Driver) Discover(ctx context.Context) ([]adapter.Candidate, error) {
 func (d *Driver) Open(ctx context.Context, c adapter.Candidate) (adapter.Session, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if d.openHook != nil {
+		d.openHook()
+	}
+	if d.openFailures > 0 {
+		d.openFailures--
+		if d.openErr != nil {
+			return nil, d.openErr
+		}
+		return nil, errors.New("fake: transient open failure")
 	}
 	if d.openErr != nil {
 		return nil, d.openErr

@@ -57,6 +57,37 @@ with `errors.Is`.
 - `Disconnect` — idempotent close + ownership release.
 - `Session` / `ConnectedIDs` / `Health` — introspection for APIs and
   health monitoring.
+- `ConnectWithPolicy` — retries transient open failures (missing device,
+  I/O errors) per `ReconnectPolicy`; permanent errors (`ErrBusy`,
+  `ErrUnsupported`, `ErrPermission`, `ErrProtocol`) and context
+  cancellation abort immediately.
+- `Shutdown` — closes every active session, races in-flight `Open` calls
+  safely (a session opened during shutdown is closed before it is ever
+  exposed), and blocks all future connects with `ErrClosed`. Idempotent.
+
+## Lifecycle & health monitoring
+
+Ownership is enforced by a per-device reservation that exists from before
+`Driver.Open` is called until after `Session.Close` returns — physical
+access can never overlap, even for concurrent `Connect` calls. Only
+`stateActive` reservations are visible to callers.
+
+`Monitor` (`internal/adapter/monitor.go`) performs periodic health passes:
+
+- `Check(ctx)` evaluates every connected session — via `Session.Health()`
+  or an optional `ProbeFunc` liveness check — and returns `HealthEvent`s
+  for state transitions (`unknown → ready → degraded → fault → closed`).
+- Sessions reporting `HealthFault` (or failing the probe) are
+  disconnected automatically when constructed with
+  `disconnectOnFault=true` — the safe default for unattended operation.
+- `Run(ctx)` drives `Check` on an interval until cancelled.
+
+Disconnect and cancellation leave no active I/O: `Disconnect` releases
+the reservation only after `Close` returns, and closed transports reject
+further reads/writes (`ErrClosed`/EOF). Verified by tests covering
+concurrent connects, shutdown-during-connect, transient/permanent
+reconnect behavior, monitor transitions, and probe-failure disconnects
+(`internal/adapter/lifecycle_test.go`).
 
 ## Arduino serial framing (`internal/adapter/arduino`)
 
@@ -106,8 +137,8 @@ See `ADAPTER_DISCOVERY.md` for host enumeration (serial by-id/tty scanning, expl
 - No concrete ELM327 or SSM drivers yet — only contracts and fakes.
 - `Manager` keys ownership on `Info.ID`; drivers must guarantee ID
   stability per physical device or document collisions.
-- Health is session-reported; no supervisor/monitor loop yet (connection
-  lifecycle & health monitoring is issue #27).
+- Health is session-reported plus optional probe; `Monitor.Run` must be
+  started by the service to get periodic checks (not automatic).
 - Arduino frame `DATA` payloads are opaque; vehicle-protocol decoding is
   deliberately out of scope here.
 - Browser-facing REST/WebSocket APIs are not part of this issue.
