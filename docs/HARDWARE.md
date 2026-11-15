@@ -1,6 +1,6 @@
 # Hardware and Interfaces
 
-See `OBD2_INTERFACE.md` for the DLC pin map, protected-interface requirements, and the hardware validation gate. The custom Arduino acquisition interface design lives in `hardware/` (`ARDUINO_INTERFACE_ARCHITECTURE.md`, `ARDUINO_BOM.md`, `arduino-interface-netlist.csv`).
+See `OBD2_INTERFACE.md` for the DLC pin map, protected-interface requirements, and the hardware validation gate. The custom Arduino acquisition interface design lives in `hardware/` (`ARDUINO_INTERFACE_ARCHITECTURE.md`, `ARDUINO_BOM.md`, `ARDUINO_VEHICLE_WIRING.md`, `arduino-interface-netlist.csv`).
 
 ## First principle
 
