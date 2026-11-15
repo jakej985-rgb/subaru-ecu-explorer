@@ -238,6 +238,7 @@ type Registry struct {
 	Hardware       map[string]HardwareProfile
 	Catalogs       map[string]CompatibilityCatalog
 	Interfaces     map[string]InterfaceProfile
+	Connectors     map[string]Connector
 }
 
 func NewRegistry() *Registry {
@@ -251,6 +252,7 @@ func NewRegistry() *Registry {
 		Hardware:       map[string]HardwareProfile{},
 		Catalogs:       map[string]CompatibilityCatalog{},
 		Interfaces:     map[string]InterfaceProfile{},
+		Connectors:     map[string]Connector{},
 	}
 }
 

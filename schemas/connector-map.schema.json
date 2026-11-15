@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jakej985-rgb/subaru-ecu-explorer/blob/main/schemas/connector-map.schema.json",
+  "title": "Subaru ECU Explorer Connector Pin Map",
+  "description": "Versioned connector pin map. Pin functions carry provenance; standard-assigned roles never imply vehicle-specific population or wiring.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "displayName", "kind", "pinCount", "pins"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "id": { "type": "string", "minLength": 1, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "displayName": { "type": "string", "minLength": 1 },
+    "kind": { "enum": ["obd-ii-dlc", "dedicated-diagnostic"] },
+    "pinCount": { "type": "integer", "minimum": 1 },
+    "pins": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["number", "function"],
+        "properties": {
+          "number": { "type": "integer", "minimum": 1 },
+          "function": { "$ref": "#/$defs/stringFact" },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+    "notes": { "type": "string" }
+  },
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source"],
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "reference": { "type": "string" }
+      }
+    },
+    "factBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["confirmed", "inferred", "unknown", "unsupported"] },
+        "value": {},
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
+        "notes": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "enum": ["confirmed", "inferred"] } }, "required": ["status"] },
+          "then": {
+            "required": ["value", "evidence"],
+            "properties": { "evidence": { "minItems": 1 } }
+          }
+        },
+        {
+          "if": { "properties": { "status": { "enum": ["unknown", "unsupported"] } }, "required": ["status"] },
+          "then": { "not": { "required": ["value"] } }
+        }
+      ]
+    },
+    "stringFact": {
+      "allOf": [
+        { "$ref": "#/$defs/factBase" },
+        {
+          "type": "object",
+          "properties": { "value": { "type": "string", "minLength": 1 } }
+        }
+      ]
+    }
+  }
+}
