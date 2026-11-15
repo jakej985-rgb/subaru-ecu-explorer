@@ -330,6 +330,10 @@ func (t *transport) Close() error {
 	// Wait for in-flight I/O to exit before releasing descriptors.
 	t.life.Lock()
 	defer t.life.Unlock()
+	// TIOCEXCL lives on the tty, not the fd, and persists while any other
+	// handle (e.g. a pty master) keeps the tty open. Clear it so a later
+	// reconnect is not rejected with EBUSY.
+	_ = unix.IoctlSetInt(t.fd, unix.TIOCNXCL, 0)
 	err := unix.Close(t.fd)
 	_ = unix.Close(t.wakeR)
 	_ = unix.Close(t.wakeW)

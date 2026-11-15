@@ -19,8 +19,18 @@ type MultiDriver struct {
 }
 
 // NewMultiDriver returns a driver for kind that fans out to drivers.
+// Nested MultiDrivers are flattened so the single routing index stays
+// valid at every level.
 func NewMultiDriver(kind Kind, drivers ...Driver) *MultiDriver {
-	return &MultiDriver{kind: kind, drivers: append([]Driver(nil), drivers...)}
+	var flat []Driver
+	for _, d := range drivers {
+		if md, ok := d.(*MultiDriver); ok {
+			flat = append(flat, md.drivers...)
+			continue
+		}
+		flat = append(flat, d)
+	}
+	return &MultiDriver{kind: kind, drivers: flat}
 }
 
 func (m *MultiDriver) Kind() Kind { return m.kind }

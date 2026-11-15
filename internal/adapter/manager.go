@@ -77,8 +77,9 @@ func (m *Manager) Discover(ctx context.Context) ([]Candidate, error) {
 	for _, d := range drivers {
 		cands, err := d.Discover(ctx)
 		if err != nil {
+			// Keep partial results: a composite driver may return healthy
+			// candidates alongside a failing sub-driver's error.
 			errs = append(errs, fmt.Errorf("%s discover: %w", d.Kind(), err))
-			continue
 		}
 		for _, c := range cands {
 			if c.Info.Kind == "" {
