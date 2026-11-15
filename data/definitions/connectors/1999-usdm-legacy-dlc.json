@@ -1,0 +1,223 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "1999-usdm-legacy-outback-dlc",
+  "displayName": "1999 USDM Legacy Outback data link connector (OBD-II DLC)",
+  "kind": "obd-ii-dlc",
+  "pinCount": 16,
+  "pins": [
+    {
+      "number": 1,
+      "function": {
+        "value": "manufacturer-discretionary",
+        "status": "confirmed",
+        "evidence": [
+          {
+            "source": "SAE J1962 / generic OBD-II pinout standard",
+            "description": "Reserved for manufacturer use; vehicle-specific assignment unknown"
+          }
+        ],
+        "notes": "Do not assume a function."
+      }
+    },
+    {
+      "number": 2,
+      "function": {
+        "value": "j1850-bus-positive",
+        "status": "confirmed",
+        "evidence": [
+          {
+            "source": "SAE J1962 / generic OBD-II pinout standard",
+            "description": "Standard-assigned role only; population and use on this vehicle are unverified"
+          }
+        ],
+        "notes": "J1850 protocol pin. The 1999 EJ25 OBD-II path is expected to be ISO 9141 (pins 7/15); do not assume."
+      }
+    },
+    {
+      "number": 3,
+      "function": {
+        "value": "manufacturer-discretionary",
+        "status": "confirmed",
+        "evidence": [
+          {
+            "source": "SAE J1962 / generic OBD-II pinout standard",
+            "description": "Reserved for manufacturer use; vehicle-specific assignment unknown"
+          }
+        ],
+        "notes": "Do not assume a function. Not a standard ground."
+      }
+    },
+    {
+      "number": 4,
+      "function": {
+        "value": "ground",
+        "status": "confirmed",
+        "evidence": [
+          {
+            "source": "SAE J1962 / generic OBD-II pinout standard"
+          }
+        ],
+        "notes": "Ground; exact subclass unverified."
+      }
+    },
+    {
+      "number": 5,
+      "function": {
+        "value": "ground",
+        "status": "confirmed",
+        "evidence": [
+          {
+            "source": "SAE J1962 / generic OBD-II pinout standard"
+          }
+        ],
+        "notes": "Signal ground per common references; verify against factory diagram."
+      }
+    },
+    {
+      "number": 6,
+      "function": {
+        "value": "can-high",
+        "status": "confirmed",
+        "evidence": [
+          {
+            "source": "SAE J1962 / generic OBD-II pinout standard",
+            "description": "Standard-assigned CAN-H role; CAN is not expected on a 1999 model year and population is unverified"
+          }
+        ]
+      }
+    },
+    {
+      "number": 7,
+      "function": {
+        "value": "iso9141-k-line",
+        "status": "confirmed",
+        "evidence": [
+          {
+            "source": "SAE J1962 / generic OBD-II pinout standard",
+            "description": "Standard-assigned ISO 9141-2 K-line role; expected OBD-II data path for this era but vehicle wiring unverified"
+          }
+        ]
+      }
+    },
+    {
+      "number": 8,
+      "function": {
+        "value": "manufacturer-discretionary",
+        "status": "confirmed",
+        "evidence": [
+          {
+            "source": "SAE J1962 / generic OBD-II pinout standard",
+            "description": "Reserved for manufacturer use; vehicle-specific assignment unknown"
+          }
+        ],
+        "notes": "Do not assume a function. SSM-related use on this vehicle is unverified."
+      }
+    },
+    {
+      "number": 9,
+      "function": {
+        "value": "manufacturer-discretionary",
+        "status": "confirmed",
+        "evidence": [
+          {
+            "source": "SAE J1962 / generic OBD-II pinout standard",
+            "description": "Reserved for manufacturer use; vehicle-specific assignment unknown"
+          }
+        ]
+      }
+    },
+    {
+      "number": 10,
+      "function": {
+        "value": "j1850-pwm-bus-negative",
+        "status": "confirmed",
+        "evidence": [
+          {
+            "source": "SAE J1962 / generic OBD-II pinout standard",
+            "description": "Standard-assigned J1850 PWM bus negative role; population and use on this vehicle are unverified"
+          }
+        ]
+      }
+    },
+    {
+      "number": 11,
+      "function": {
+        "value": "manufacturer-discretionary",
+        "status": "confirmed",
+        "evidence": [
+          {
+            "source": "SAE J1962 / generic OBD-II pinout standard",
+            "description": "Reserved for manufacturer use; vehicle-specific assignment unknown"
+          }
+        ]
+      }
+    },
+    {
+      "number": 12,
+      "function": {
+        "value": "manufacturer-discretionary",
+        "status": "confirmed",
+        "evidence": [
+          {
+            "source": "SAE J1962 / generic OBD-II pinout standard",
+            "description": "Reserved for manufacturer use; vehicle-specific assignment unknown"
+          }
+        ]
+      }
+    },
+    {
+      "number": 13,
+      "function": {
+        "value": "manufacturer-discretionary",
+        "status": "confirmed",
+        "evidence": [
+          {
+            "source": "SAE J1962 / generic OBD-II pinout standard",
+            "description": "Reserved for manufacturer use; vehicle-specific assignment unknown"
+          }
+        ]
+      }
+    },
+    {
+      "number": 14,
+      "function": {
+        "value": "can-low",
+        "status": "confirmed",
+        "evidence": [
+          {
+            "source": "SAE J1962 / generic OBD-II pinout standard",
+            "description": "Standard-assigned CAN-L role; population unverified, CAN not expected on 1999 model year"
+          }
+        ]
+      }
+    },
+    {
+      "number": 15,
+      "function": {
+        "value": "iso9141-l-line",
+        "status": "confirmed",
+        "evidence": [
+          {
+            "source": "SAE J1962 / generic OBD-II pinout standard",
+            "description": "Standard-assigned ISO 9141-2 L-line role; expected OBD-II data path for this era but vehicle wiring unverified"
+          }
+        ]
+      }
+    },
+    {
+      "number": 16,
+      "function": {
+        "value": "battery-12v-unswitched",
+        "status": "confirmed",
+        "evidence": [
+          {
+            "source": "SAE J1962 / generic OBD-II pinout standard",
+            "description": "Standard-assigned +12V battery supply role; vehicle-side verification pending"
+          }
+        ],
+        "notes": "Always-live supply per standard. Verify with factory documentation before relying on it."
+      }
+    }
+  ],
+  "notes": "Pin functions above are generic SAE J1962 OBD-II assignments only. Factory documentation reviewed for the 1999 USDM Legacy describes a 16-pin DLC shared by OBD-II and Subaru SSM but does not provide a verified per-pin vehicle mapping in this repository. Manufacturer-discretionary positions (1, 3, 8, 9, 11-13) and any Subaru-specific SSM terminals must be established from the correct factory wiring diagram before any hardware connects. See docs/OBD2_INTERFACE.md."
+}

@@ -1,5 +1,7 @@
 # Hardware and Interfaces
 
+See `OBD2_INTERFACE.md` for the DLC pin map, protected-interface requirements, and the hardware validation gate.
+
 ## First principle
 
 Use a known-compatible, electrically protected automotive diagnostic interface before attempting custom hardware. Vehicle electrical systems can produce transients that can damage host computers and microcontrollers.

@@ -42,8 +42,8 @@ func main() {
 		}
 		failed++
 	} else {
-		fmt.Printf("reference check ok (%d profiles, %d engines, %d transmissions, %d drivetrains, %d trims, %d configurations, %d hardware, %d catalogs, %d interfaces)\n",
-			len(r.Profiles), len(r.Engines), len(r.Transmissions), len(r.Drivetrains), len(r.Trims), len(r.Configurations), len(r.Hardware), len(r.Catalogs), len(r.Interfaces))
+		fmt.Printf("reference check ok (%d profiles, %d engines, %d transmissions, %d drivetrains, %d trims, %d configurations, %d hardware, %d catalogs, %d interfaces, %d connectors)\n",
+			len(r.Profiles), len(r.Engines), len(r.Transmissions), len(r.Drivetrains), len(r.Trims), len(r.Configurations), len(r.Hardware), len(r.Catalogs), len(r.Interfaces), len(r.Connectors))
 	}
 
 	for _, cat := range r.Catalogs {

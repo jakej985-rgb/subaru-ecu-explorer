@@ -24,6 +24,7 @@ var definitionKinds = map[string]string{
 	"hardware":       "hardware",
 	"catalogs":       "catalog",
 	"interfaces":     "interface",
+	"connectors":     "connector",
 }
 
 // LoadResult records the outcome for one definition file.
@@ -157,6 +158,12 @@ func loadDefinitionFile(path, kind string, r *Registry) error {
 			return err
 		}
 		regErr = r.RegisterInterface(d)
+	case "connector":
+		var d Connector
+		if err := decode(&d); err != nil {
+			return err
+		}
+		regErr = r.RegisterConnector(d)
 	default:
 		return fmt.Errorf("unknown definition kind %q", kind)
 	}
