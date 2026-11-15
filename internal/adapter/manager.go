@@ -18,9 +18,21 @@ type Manager struct {
 	sessions map[string]*managed // key: candidate Info.ID
 }
 
+type sessionState uint8
+
+const (
+	stateOpening sessionState = iota
+	stateActive
+	stateClosing
+)
+
+// managed is a per-device reservation. It exists from before Driver.Open is
+// called until after Session.Close returns, so physical access never
+// overlaps. Only stateActive entries are exposed to callers.
 type managed struct {
 	session Session
 	kind    Kind
+	state   sessionState
 }
 
 // NewManager returns an empty adapter manager.
@@ -87,49 +99,54 @@ func (m *Manager) Connect(ctx context.Context, candidate Candidate) (Session, er
 		m.mu.Unlock()
 		return nil, fmt.Errorf("%w: no driver for kind %q", ErrUnsupported, candidate.Info.Kind)
 	}
+	// Any reservation (opening, active, or closing) makes the device busy.
 	if _, busy := m.sessions[candidate.Info.ID]; busy {
 		m.mu.Unlock()
 		return nil, fmt.Errorf("%w: %s", ErrBusy, candidate.Info.ID)
 	}
+	res := &managed{kind: candidate.Info.Kind, state: stateOpening}
+	m.sessions[candidate.Info.ID] = res
 	m.mu.Unlock()
 
 	s, err := d.Open(ctx, candidate)
-	if err != nil {
-		return nil, err
-	}
 
 	m.mu.Lock()
-	// Re-check under lock: another Connect may have raced us.
-	if _, busy := m.sessions[candidate.Info.ID]; busy {
-		m.mu.Unlock()
-		_ = s.Close()
-		return nil, fmt.Errorf("%w: %s", ErrBusy, candidate.Info.ID)
+	defer m.mu.Unlock()
+	if err != nil {
+		delete(m.sessions, candidate.Info.ID)
+		return nil, err
 	}
-	m.sessions[candidate.Info.ID] = &managed{session: s, kind: candidate.Info.Kind}
-	m.mu.Unlock()
+	res.session = s
+	res.state = stateActive
 	return s, nil
 }
 
-// Disconnect closes the session for id, if any, and releases ownership.
-// It is safe to call for unknown or already-disconnected IDs.
+// Disconnect closes the session for id, if any, and releases ownership only
+// after Close returns. It is safe to call for unknown, still-opening, or
+// already-disconnected IDs (those are no-ops).
 func (m *Manager) Disconnect(id string) error {
 	m.mu.Lock()
 	man, ok := m.sessions[id]
-	if ok {
-		delete(m.sessions, id)
-	}
-	m.mu.Unlock()
-	if !ok {
+	if !ok || man.state != stateActive {
+		m.mu.Unlock()
 		return nil
 	}
-	return man.session.Close()
+	man.state = stateClosing
+	m.mu.Unlock()
+
+	err := man.session.Close()
+
+	m.mu.Lock()
+	delete(m.sessions, id)
+	m.mu.Unlock()
+	return err
 }
 
 // Session returns the active session for id, or nil.
 func (m *Manager) Session(id string) Session {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if man, ok := m.sessions[id]; ok {
+	if man, ok := m.sessions[id]; ok && man.state == stateActive {
 		return man.session
 	}
 	return nil
@@ -140,8 +157,10 @@ func (m *Manager) ConnectedIDs() []string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := make([]string, 0, len(m.sessions))
-	for id := range m.sessions {
-		out = append(out, id)
+	for id, man := range m.sessions {
+		if man.state == stateActive {
+			out = append(out, id)
+		}
 	}
 	sort.Strings(out)
 	return out

@@ -3,11 +3,100 @@ package adapter_test
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 
 	"github.com/jakej985-rgb/subaru-ecu-explorer/internal/adapter"
 	"github.com/jakej985-rgb/subaru-ecu-explorer/internal/adapter/fake"
 )
+
+// gatedDriver blocks inside Open and/or Close until released, so tests can
+// deterministically interleave Connect/Disconnect calls.
+type gatedDriver struct {
+	openEntered, openRelease   chan struct{}
+	closeEntered, closeRelease chan struct{}
+	opens                      int32
+}
+
+func (d *gatedDriver) Kind() adapter.Kind { return adapter.KindELM327 }
+
+func (d *gatedDriver) Discover(context.Context) ([]adapter.Candidate, error) { return nil, nil }
+
+func (d *gatedDriver) Open(_ context.Context, c adapter.Candidate) (adapter.Session, error) {
+	atomic.AddInt32(&d.opens, 1)
+	if d.openEntered != nil {
+		d.openEntered <- struct{}{}
+		<-d.openRelease
+	}
+	s := fake.NewSession(c.Info, adapter.Capabilities{ReadOnly: true, Transport: "fake"}, fake.NewTransport())
+	if d.closeEntered != nil {
+		return &slowCloseSession{Session: s, entered: d.closeEntered, release: d.closeRelease}, nil
+	}
+	return s, nil
+}
+
+type slowCloseSession struct {
+	*fake.Session
+	entered, release chan struct{}
+}
+
+func (s *slowCloseSession) Close() error {
+	s.entered <- struct{}{}
+	<-s.release
+	return s.Session.Close()
+}
+
+func TestManagerConnectReservesDuringOpen(t *testing.T) {
+	d := &gatedDriver{openEntered: make(chan struct{}), openRelease: make(chan struct{})}
+	m := adapter.NewManager()
+	m.RegisterDriver(d)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := m.Connect(context.Background(), cand(adapter.KindELM327, "elm-a"))
+		done <- err
+	}()
+	<-d.openEntered // first Connect is inside Open
+
+	if _, err := m.Connect(context.Background(), cand(adapter.KindELM327, "elm-a")); !errors.Is(err, adapter.ErrBusy) {
+		t.Fatalf("expected ErrBusy while opening, got %v", err)
+	}
+	if m.Session("elm-a") != nil || len(m.ConnectedIDs()) != 0 {
+		t.Fatal("opening reservation must not be exposed as an active session")
+	}
+	close(d.openRelease)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if n := atomic.LoadInt32(&d.opens); n != 1 {
+		t.Fatalf("expected exactly 1 Open, got %d", n)
+	}
+}
+
+func TestManagerDisconnectHoldsReservationUntilClosed(t *testing.T) {
+	d := &gatedDriver{closeEntered: make(chan struct{}), closeRelease: make(chan struct{})}
+	m := adapter.NewManager()
+	m.RegisterDriver(d)
+	if _, err := m.Connect(context.Background(), cand(adapter.KindELM327, "elm-a")); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- m.Disconnect("elm-a") }()
+	<-d.closeEntered // Disconnect is inside Close
+
+	if _, err := m.Connect(context.Background(), cand(adapter.KindELM327, "elm-a")); !errors.Is(err, adapter.ErrBusy) {
+		t.Fatalf("expected ErrBusy while closing, got %v", err)
+	}
+	close(d.closeRelease)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	d.closeEntered = nil // reconnected session closes without gating
+	if _, err := m.Connect(context.Background(), cand(adapter.KindELM327, "elm-a")); err != nil {
+		t.Fatalf("reconnect after close failed: %v", err)
+	}
+}
 
 func cand(kind adapter.Kind, id string) adapter.Candidate {
 	return adapter.Candidate{Info: adapter.Info{ID: id, Kind: kind, Path: "/dev/" + id}}

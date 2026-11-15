@@ -12,13 +12,18 @@ import (
 	"github.com/jakej985-rgb/subaru-ecu-explorer/internal/adapter"
 )
 
-// Transport is an in-memory adapter.Transport. Writes append to a buffer that
-// Read consumes FIFO; it is safe for concurrent use.
+// Transport is an in-memory adapter.Transport. Feed supplies inbound bytes
+// consumed by Read; Write appends to a separate outbound buffer inspected via
+// Written. Deadlines are honored and return adapter.ErrTimeout. It is safe
+// for concurrent use.
 type Transport struct {
-	mu     sync.Mutex
-	cond   *sync.Cond
-	buf    bytes.Buffer
-	closed bool
+	mu       sync.Mutex
+	cond     *sync.Cond
+	in       bytes.Buffer
+	out      bytes.Buffer
+	closed   bool
+	deadline time.Time
+	timer    *time.Timer
 }
 
 // NewTransport returns an empty in-memory transport.
@@ -35,20 +40,28 @@ func (t *Transport) Feed(b []byte) {
 	if t.closed {
 		return
 	}
-	t.buf.Write(b)
+	t.in.Write(b)
 	t.cond.Broadcast()
+}
+
+// expired reports whether the deadline has passed. Caller holds t.mu.
+func (t *Transport) expired() bool {
+	return !t.deadline.IsZero() && !time.Now().Before(t.deadline)
 }
 
 func (t *Transport) Read(p []byte) (int, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	for t.buf.Len() == 0 && !t.closed {
+	for t.in.Len() == 0 && !t.closed {
+		if t.expired() {
+			return 0, adapter.ErrTimeout
+		}
 		t.cond.Wait()
 	}
-	if t.buf.Len() == 0 && t.closed {
+	if t.in.Len() == 0 && t.closed {
 		return 0, io.EOF
 	}
-	return t.buf.Read(p)
+	return t.in.Read(p)
 }
 
 func (t *Transport) Write(p []byte) (int, error) {
@@ -57,16 +70,42 @@ func (t *Transport) Write(p []byte) (int, error) {
 	if t.closed {
 		return 0, adapter.ErrClosed
 	}
-	return t.buf.Write(p)
+	if t.expired() {
+		return 0, adapter.ErrTimeout
+	}
+	return t.out.Write(p)
 }
 
-func (t *Transport) SetDeadline(time.Time) error { return nil }
+// SetDeadline bounds future Read/Write calls; a blocked Read wakes with
+// adapter.ErrTimeout once the deadline passes. A zero time clears it.
+func (t *Transport) SetDeadline(d time.Time) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.deadline = d
+	if t.timer != nil {
+		t.timer.Stop()
+		t.timer = nil
+	}
+	if !d.IsZero() {
+		t.timer = time.AfterFunc(time.Until(d), func() {
+			t.mu.Lock()
+			t.cond.Broadcast()
+			t.mu.Unlock()
+		})
+	}
+	t.cond.Broadcast()
+	return nil
+}
 
 func (t *Transport) Close() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if !t.closed {
 		t.closed = true
+		if t.timer != nil {
+			t.timer.Stop()
+			t.timer = nil
+		}
 		t.cond.Broadcast()
 	}
 	return nil
@@ -76,7 +115,7 @@ func (t *Transport) Close() error {
 func (t *Transport) Written() []byte {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return append([]byte(nil), t.buf.Bytes()...)
+	return append([]byte(nil), t.out.Bytes()...)
 }
 
 // Session is a fake adapter.Session.

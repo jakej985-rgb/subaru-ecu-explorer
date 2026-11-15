@@ -64,18 +64,19 @@ The Arduino Mega path uses a versioned, bounded USB-serial frame — this is
 **transport framing only**. It carries no vehicle-protocol semantics and
 never decodes ECU/SSM messages.
 
-- Frame: magic `0xA5`, version byte, type, sequence, payload length,
-  payload, CRC-16/CCITT. Max payload 512 bytes; `DecodeFrame` returns
+- Frame: magic `0xA5 0x5A`, version byte, type, sequence, payload length,
+  payload, CRC-16/CCITT-FALSE. Max payload 512 bytes; `DecodeFrame` returns
   `ErrTruncated`/`ErrBadMagic`/`ErrBadVersion`/`ErrBadCRC`/
-  `ErrPayloadTooBig`.
-- Frame types: `HELLO`, `HELLO_ACK`, `CAPS`, `CAPS_ACK`, `DATA`,
-  `ACK`, `NACK`, `RESET`.
-- Capability negotiation: firmware sends `HELLO` (firmware version, board,
-  protocol version, capability bitmask); the host replies `HELLO_ACK` with
-  the protocol version it supports and its accepted capabilities, then
-  `CAPS`/`CAPS_ACK` exchange settles the final set. Mismatched protocol
-  versions and unknown capability bits are rejected explicitly — the
-  transport never silently degrades.
+  `ErrPayloadTooBig`/`ErrInvalidType`.
+- Frame types: `Hello` (0x01), `Data` (0x02), `Ack` (0x03), `Error`
+  (0x04), `Capability` (0x05). `Encode` and `DecodeFrame` reject any
+  other type.
+- Hello payload: protocol version, capability bitmask, firmware version and
+  board strings (each ≤ 32 bytes, enforced on both encode and decode).
+  **Only the payload codec is implemented.** The handshake state machine
+  (host acknowledgement, protocol-version compatibility checks, rejecting
+  unknown capability bits) is not implemented yet; it lands with the serial
+  driver.
 - Vehicle-facing data moves only inside `DATA` payloads as opaque bytes;
   interpretation is the protocol layer's job (later issues).
 
@@ -85,7 +86,7 @@ never decodes ECU/SSM messages.
 |---|---|---|---|
 | ELM327-compatible OBD-II | `elm327-odbii` | serial/USB/Bluetooth RFCOMM | contract only — driver in later issue |
 | Subaru SSM interface | `subaru-ssm` | serial | contract only — driver in later issue |
-| Arduino Mega 2560 R3 | `arduino-serial` | USB serial, versioned frames | framing + negotiation implemented; serial driver + firmware in issues #64/#65 |
+| Arduino Mega 2560 R3 | `arduino-serial` | USB serial, versioned frames | framing + Hello payload codec implemented; handshake, serial driver + firmware in issues #64/#65 |
 
 ## Testing
 
@@ -95,8 +96,8 @@ never decodes ECU/SSM messages.
   (`ErrBusy`), unknown kind/candidate errors, health lifecycle, discover
   error isolation, connect cancellation.
 - `arduino/frame_test.go` — encode/decode round trip, truncation, bad
-  magic/version/CRC, oversized payload, back-to-back stream parsing,
-  HELLO negotiation round trip.
+  magic/version/CRC, invalid frame type, oversized payload, back-to-back
+  stream parsing, Hello payload round trip and string bounds.
 
 ## Limitations & open questions
 

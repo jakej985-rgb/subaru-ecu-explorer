@@ -54,11 +54,27 @@ var (
 	ErrPayloadTooBig = errors.New("arduino: payload exceeds maximum")
 	ErrBadCRC        = errors.New("arduino: CRC mismatch")
 	ErrTruncated     = errors.New("arduino: incomplete frame")
+	ErrInvalidType   = errors.New("arduino: invalid frame type")
+	ErrHelloField    = errors.New("arduino: hello string field too long")
 )
+
+// maxHelloString bounds each Hello string field.
+const maxHelloString = 32
+
+func validType(t FrameType) bool {
+	switch t {
+	case TypeHello, TypeData, TypeAck, TypeError, TypeCapability:
+		return true
+	}
+	return false
+}
 
 // Encode serializes a frame. It returns an error for invalid types or
 // oversized payloads.
 func Encode(f Frame) ([]byte, error) {
+	if !validType(f.Type) {
+		return nil, fmt.Errorf("%w: 0x%02x", ErrInvalidType, byte(f.Type))
+	}
 	if len(f.Payload) > maxPayloadSize {
 		return nil, fmt.Errorf("%w: %d > %d", ErrPayloadTooBig, len(f.Payload), maxPayloadSize)
 	}
@@ -99,6 +115,9 @@ func DecodeFrame(buf []byte) (Frame, int, error) {
 	want := binary.BigEndian.Uint16(buf[headerSize+payloadLen : total])
 	if crc16(body) != want {
 		return Frame{}, 0, ErrBadCRC
+	}
+	if !validType(FrameType(buf[3])) {
+		return Frame{}, 0, fmt.Errorf("%w: 0x%02x", ErrInvalidType, buf[3])
 	}
 	payload := make([]byte, payloadLen)
 	copy(payload, buf[headerSize:headerSize+payloadLen])
@@ -144,8 +163,8 @@ type Hello struct {
 
 // EncodeHello serializes a Hello into a frame payload.
 func (h Hello) EncodeHello() ([]byte, error) {
-	if len(h.FirmwareVersion) > 32 || len(h.Board) > 32 {
-		return nil, errors.New("arduino: hello string field too long")
+	if len(h.FirmwareVersion) > maxHelloString || len(h.Board) > maxHelloString {
+		return nil, ErrHelloField
 	}
 	buf := make([]byte, 2+2+4+1+len(h.FirmwareVersion)+1+len(h.Board))
 	off := 0
@@ -168,7 +187,7 @@ func (h Hello) EncodeHello() ([]byte, error) {
 // string fields.
 func DecodeHello(payload []byte) (Hello, error) {
 	var h Hello
-	if len(payload) < 9 {
+	if len(payload) < 8 {
 		return h, ErrTruncated
 	}
 	off := 0
@@ -178,6 +197,9 @@ func DecodeHello(payload []byte) (Hello, error) {
 	off += 4
 	fwLen := int(payload[off])
 	off++
+	if fwLen > maxHelloString {
+		return Hello{}, ErrHelloField
+	}
 	if off+fwLen+1 > len(payload) {
 		return h, ErrTruncated
 	}
@@ -185,6 +207,9 @@ func DecodeHello(payload []byte) (Hello, error) {
 	off += fwLen
 	boardLen := int(payload[off])
 	off++
+	if boardLen > maxHelloString {
+		return Hello{}, ErrHelloField
+	}
 	if off+boardLen > len(payload) {
 		return h, ErrTruncated
 	}
