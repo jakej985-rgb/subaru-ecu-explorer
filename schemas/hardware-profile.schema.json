@@ -10,7 +10,7 @@
     "schemaVersion": { "const": "1.0.0" },
     "id": { "type": "string", "minLength": 1, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
     "displayName": { "type": "string", "minLength": 1 },
-    "kind": { "enum": ["engine-ecu", "abs-controller", "transmission-controller", "other-module"] },
+    "kind": { "enum": ["engine-ecu", "abs-controller", "abs-hydraulic-assembly", "transmission-controller", "other-module"] },
     "manufacturer": { "$ref": "#/$defs/stringFact" },
     "partNumber": { "$ref": "#/$defs/stringFact" },
     "notes": { "type": "string" }

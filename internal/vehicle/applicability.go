@@ -63,6 +63,8 @@ func (a Applicability) Validate() error {
 	if a.ModelYear != nil {
 		if err := validateFact("modelYear", *a.ModelYear); err != nil {
 			problems = append(problems, err)
+		} else if a.ModelYear.Value != nil && a.ModelYear.Value.Min == 0 && a.ModelYear.Value.Max == 0 {
+			problems = append(problems, errors.New("modelYear: range requires at least one of min/max"))
 		} else if a.ModelYear.Value != nil && a.ModelYear.Value.Max != 0 && a.ModelYear.Value.Min > a.ModelYear.Value.Max {
 			problems = append(problems, fmt.Errorf("modelYear: min %d exceeds max %d", a.ModelYear.Value.Min, a.ModelYear.Value.Max))
 		}

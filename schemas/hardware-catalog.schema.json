@@ -65,7 +65,11 @@
       "properties": {
         "min": { "type": "integer" },
         "max": { "type": "integer" }
-      }
+      },
+      "anyOf": [
+        { "required": ["min"], "properties": { "min": { "not": { "const": 0 } } } },
+        { "required": ["max"], "properties": { "max": { "not": { "const": 0 } } } }
+      ]
     },
     "intRangeFact": {
       "allOf": [

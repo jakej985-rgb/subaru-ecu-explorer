@@ -305,11 +305,23 @@ func optionExpected(f Fact[string]) string {
 	return string(f.Status)
 }
 
+// valuelessConstraint handles a present constraint whose value is not
+// established (unknown/unsupported). It is never treated as not-supplied.
+func valuelessConstraint(res ConstraintResult, status FactStatus) ConstraintResult {
+	res.State = ConstraintUnknown
+	res.Expected = string(status)
+	res.Detail = fmt.Sprintf("constraint value is %s; cannot evaluate", status)
+	return res
+}
+
 func evalString(dimension string, constraint *Fact[string], vehicle Fact[string]) ConstraintResult {
 	res := ConstraintResult{Dimension: dimension}
-	if constraint == nil || constraint.Value == nil {
+	if constraint == nil {
 		res.State = ConstraintNotSupplied
 		return res
+	}
+	if constraint.Value == nil {
+		return valuelessConstraint(res, constraint.Status)
 	}
 	res.Expected = *constraint.Value
 	if vehicle.Value == nil {
@@ -328,9 +340,12 @@ func evalString(dimension string, constraint *Fact[string], vehicle Fact[string]
 
 func evalIntRange(dimension string, constraint *Fact[IntRange], vehicle Fact[int], candidates []int) ConstraintResult {
 	res := ConstraintResult{Dimension: dimension}
-	if constraint == nil || constraint.Value == nil {
+	if constraint == nil {
 		res.State = ConstraintNotSupplied
 		return res
+	}
+	if constraint.Value == nil {
+		return valuelessConstraint(res, constraint.Status)
 	}
 	r := constraint.Value
 	res.Expected = fmt.Sprintf("model year %d-%d", r.Min, r.Max)
@@ -356,9 +371,12 @@ func evalIntRange(dimension string, constraint *Fact[IntRange], vehicle Fact[int
 
 func evalProduction(constraint *Fact[ProductionRange], vehicle Fact[ProductionRange]) ConstraintResult {
 	res := ConstraintResult{Dimension: "production"}
-	if constraint == nil || constraint.Value == nil {
+	if constraint == nil {
 		res.State = ConstraintNotSupplied
 		return res
+	}
+	if constraint.Value == nil {
+		return valuelessConstraint(res, constraint.Status)
 	}
 	res.Expected = formatRange(constraint.Value)
 	if vehicle.Value == nil {
