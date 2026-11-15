@@ -264,15 +264,26 @@ func (g *GatedSession) Transact(ctx context.Context, op Operation, request []byt
 	defer stop()
 
 	// Clear leftovers from a previously interrupted exchange so they
-	// cannot be returned as this request's response.
+	// cannot be returned as this request's response. Resync has its own
+	// budget that always fits a full idle window (so short ResponseTimeouts
+	// cannot make recovery impossible), bounded by the context deadline.
 	if g.dirty {
-		if !g.drain(t, ioDeadline) {
+		resyncDeadline := time.Now().Add(g.policy.ResponseTimeout + 2*g.policy.ResponseIdleTimeout)
+		if dl, ok := ctx.Deadline(); ok && dl.Before(resyncDeadline) {
+			resyncDeadline = dl
+		}
+		if !g.drain(t, resyncDeadline) {
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
 			return nil, ErrResync
 		}
 		g.dirty = false
+		// The request's ResponseTimeout budget starts after resync.
+		ioDeadline = time.Now().Add(g.policy.ResponseTimeout)
+		if dl, ok := ctx.Deadline(); ok && dl.Before(ioDeadline) {
+			ioDeadline = dl
+		}
 	}
 	t.setDeadline(ioDeadline)
 

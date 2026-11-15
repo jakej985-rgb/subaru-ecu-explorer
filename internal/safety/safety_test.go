@@ -314,6 +314,28 @@ func TestCancelledPartialResponseDoesNotLeakIntoNext(t *testing.T) {
 	}
 }
 
+func TestResyncWithShortResponseTimeout(t *testing.T) {
+	tr := fake.NewTransport()
+	s := fake.NewSession(adapter.Info{ID: "dev", Kind: adapter.KindELM327},
+		adapter.Capabilities{ReadOnly: true, Transport: "fake"}, tr)
+	// ResponseTimeout below the default 100ms idle timeout.
+	g := Wrap(s, &Policy{ResponseTimeout: 50 * time.Millisecond})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(10*time.Millisecond, cancel)
+	if _, err := g.Transact(ctx, OpReadData, []byte("a")); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+
+	// The device is silent; recovery must succeed and the request be sent.
+	if _, err := g.Transact(context.Background(), OpReadData, []byte("b")); err != nil {
+		t.Fatalf("expected recovery, got %v", err)
+	}
+	if got := string(tr.Written()); got != "ab" {
+		t.Fatalf("expected retry to write request, wrote %q", got)
+	}
+}
+
 func TestContextDeadlineExpiryIsError(t *testing.T) {
 	g, _ := gatedSession(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
