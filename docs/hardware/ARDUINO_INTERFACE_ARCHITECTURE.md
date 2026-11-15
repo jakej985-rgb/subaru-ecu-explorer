@@ -23,7 +23,7 @@ of vehicle protocol compatibility.
   (always live) ───►│  fuse → reverse-polarity → TVS → bulk C    │
                     │       → 12V→5V automotive buck ──► 5V rail │
                     └────────────────────────────────────────────┘
-  DLC pins 3/4/5    │  Chassis/signal ground → star ground point  │
+  DLC pins 4/5      │  Chassis/signal ground → star ground point  │
   (ground)     ───►│  (single-point bond to power ground)        │
                     └────────────────────────────────────────────┘
 
@@ -61,13 +61,17 @@ of vehicle protocol compatibility.
 | Vehicle signal | DLC pin | Path | Status |
 |---|---|---|---|
 | +12 V battery | 16 | fused, reverse-polarity-protected, TVS-clamped, buck to 5 V | designed |
-| Ground | 3/4/5 | star ground to power-stage ground | designed |
+| Ground | 4/5 | star ground to power-stage ground | designed |
 | ISO 9141 K-line / SSM2 | 7 | PTC + TVS + series R → MC33290 → UART1 | designed, unverified on vehicle |
 | ISO 9141 L-line | 15 | optional second channel footprint | footprint only |
-| SSM1 RX/TX (5 V TTL) | 12/13? | separate protected header → UART2 | **pin assignment unverified** |
+| SSM1 RX/TX (5 V TTL) | 12/13? | separate protected header → UART2; **not wired in v0.1** | **pin assignment unverified** |
 | CAN-H/L | 6/14 | unpopulated footprint (not expected 1999) | expansion only |
 | J1850 | 1/2 | not connected | n/a |
-| Pins 8–11, 13 | — | **not connected — unknown functions** | prohibited |
+| Pin 3 | 3 | **not connected — manufacturer-discretionary, not a ground** | prohibited |
+| Pins 8–11 | — | **not connected — unknown functions** | prohibited |
+
+Pins 12/13 remain disconnected in v0.1; the SSM1 header is wired only
+after factory pin verification (v0.2).
 
 SSM coverage honesty: K-line (MC33290) covers the SSM2/ISO-9141 physical
 layer only. **SSM1's 5 V TTL two-wire scheme is a separate path** on
@@ -82,6 +86,11 @@ connection. No claim is made that this design covers every SSM mode.
 - A 12 V→5 V automotive-rated buck regulator (≥1 A) feeds the Mega's
   5 V pin and the MC33290 VDD. The Mega's VIN pin is not used for vehicle
   power (VIN expects 7–12 V; the regulated 5 V rail is cleaner).
+- Feeding the 5 V pin does **not** disconnect the Mega R3's USB VBUS
+  path. Before the external 5 V rail and the host USB are connected at
+  the same time, the schematic review must confirm they are isolated, for
+  example with a USB cable that has VBUS cut or a diode/ideal-diode on the
+  external rail. No backfeed into the host or the buck is allowed.
 - All grounds meet at a single star point beside the protection stage;
   no ground-loop paths through signal wiring.
 
@@ -103,7 +112,8 @@ connection. No claim is made that this design covers every SSM mode.
 ## Connectors
 
 - Vehicle side: commercial OBD-II breakout/tap wired **only** to verified
-  positions (16, 3/4/5, 7, 15; 12/13 only after factory pin verification).
+  positions (16, 4/5, 7, 15; 12/13 only after factory pin verification;
+  pin 3 never).
   No probing of unknown terminals.
 - MCU side: pin headers per the connection table; JST-XH for the SSM1
   experiment header; USB-A to the host.
@@ -127,7 +137,7 @@ connection. No claim is made that this design covers every SSM mode.
 |-----|------|----|-------|
 | VBAT_FUSED | DLC16 → fuse → rev-polarity → TVS → bulk C | buck IN | 12 V vehicle rail |
 | +5V | buck OUT | Mega 5V pin, MC33290 VDD, ISP pull-ups | regulated rail |
-| GND_STAR | DLC 3/4/5, all stage grounds | single star point | no loops |
+| GND_STAR | DLC 4/5, all stage grounds | single star point | no loops; DLC3 not connected |
 | KLINE_BUS | DLC7 → PTC → TVS → series R | MC33290 K pin | 12 V bus side |
 | K_TXD | MC33290 TXD → series R | Mega pin 19 (RX1) | 5 V logic |
 | K_RXD | Mega pin 18 (TX1) → series R | MC33290 RXD | 5 V logic |
