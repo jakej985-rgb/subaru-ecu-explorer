@@ -106,7 +106,7 @@ func TestHelloRoundTrip(t *testing.T) {
 }
 
 func TestFrameTypeValidation(t *testing.T) {
-	for _, ft := range []FrameType{TypeHello, TypeData, TypeAck, TypeError, TypeCapability} {
+	for _, ft := range []FrameType{TypeHello, TypeData, TypeAck, TypeError, TypeCapability, TypeHeartbeat, TypeStatus} {
 		enc, err := Encode(Frame{Type: ft})
 		if err != nil {
 			t.Fatalf("type 0x%02x: %v", byte(ft), err)
@@ -115,7 +115,7 @@ func TestFrameTypeValidation(t *testing.T) {
 			t.Fatalf("type 0x%02x decode: %v", byte(ft), err)
 		}
 	}
-	for _, ft := range []FrameType{0x00, 0x06, 0xFF} {
+	for _, ft := range []FrameType{0x00, 0x08, 0xFF} {
 		if _, err := Encode(Frame{Type: ft}); !errors.Is(err, ErrInvalidType) {
 			t.Fatalf("type 0x%02x: expected ErrInvalidType, got %v", byte(ft), err)
 		}

@@ -37,6 +37,8 @@ const (
 	TypeAck        FrameType = 0x03 // acknowledgement
 	TypeError      FrameType = 0x04 // firmware-reported error
 	TypeCapability FrameType = 0x05 // capability report
+	TypeHeartbeat  FrameType = 0x06 // periodic liveness tick
+	TypeStatus     FrameType = 0x07 // state transition report
 )
 
 // Frame is one transport unit.
@@ -63,7 +65,7 @@ const maxHelloString = 32
 
 func validType(t FrameType) bool {
 	switch t {
-	case TypeHello, TypeData, TypeAck, TypeError, TypeCapability:
+	case TypeHello, TypeData, TypeAck, TypeError, TypeCapability, TypeHeartbeat, TypeStatus:
 		return true
 	}
 	return false
