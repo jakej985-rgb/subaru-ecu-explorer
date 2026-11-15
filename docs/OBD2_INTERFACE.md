@@ -17,18 +17,21 @@ host-side transport support that is verified so far. Issue #24.
   per-pin vehicle mapping**. Every vehicle-specific claim stays `unknown`.
 - **No guessed pin mapping.** Pin functions are never inferred from wire
   color, connector position, or generic tables. Manufacturer-discretionary
-  positions (8–13) carry no vehicle function.
+  positions (1, 3, 8, 9, 11–13) carry no vehicle function.
 
 ## DLC pin map (generic SAE J1962 assignments)
 
 | Pin | Function (standard role) | Vehicle status |
 |----:|--------------------------|----------------|
-| 1   | J1850 PWM+               | unverified — not expected on 1999 EJ25 |
-| 2   | J1850 PWM−               | unverified |
-| 3–5 | ground (chassis/signal)  | unverified subclass; verify vs factory diagram |
+| 1   | manufacturer-discretionary | **unknown** — do not assume |
+| 2   | J1850 bus+               | unverified — not expected on 1999 EJ25 |
+| 3   | manufacturer-discretionary | **unknown** — do not assume |
+| 4   | chassis ground           | verify vs factory diagram |
+| 5   | signal ground            | verify vs factory diagram |
 | 6   | CAN-H                    | unverified — CAN not expected on 1999 |
 | 7   | ISO 9141-2 K-line        | expected OBD-II data path; vehicle wiring unverified |
-| 8–13| manufacturer-discretionary | **unknown** — possible SSM territory; do not assume |
+| 8, 9, 11–13 | manufacturer-discretionary | **unknown** — possible SSM territory; do not assume |
+| 10  | J1850 PWM bus−           | unverified — not expected on 1999 EJ25 |
 | 14  | CAN-L                    | unverified |
 | 15  | ISO 9141-2 L-line        | expected OBD-II data path; vehicle wiring unverified |
 | 16  | +12 V battery (unswitched)| standard role; vehicle-side verification pending |
@@ -43,7 +46,7 @@ Machine-readable form: `data/definitions/connectors/1999-usdm-legacy-dlc.json`
   commercially protected interface available today.
 - **Subaru SSM path:** separate terminals per factory documentation, exact
   pins **unknown** — tracked under issue #25 / `docs/SSM_PROTOCOL.md`.
-- **Pins 8–13** may carry manufacturer-specific signals including SSM;
+- **Pins 1, 3, 8, 9, 11–13** may carry manufacturer-specific signals including SSM;
   they are explicitly *not* claimed by any definition.
 
 ## Protected automotive interface requirement
@@ -90,7 +93,7 @@ Connection to the vehicle is blocked until, in order:
 
 - Exact vehicle-side population of every DLC pin (factory wiring diagram
   not yet in-repo).
-- Whether Subaru SSM uses DLC pins 8–13 or a separate dedicated connector
+- Whether Subaru SSM uses DLC discretionary pins (1, 3, 8, 9, 11–13) or a separate dedicated connector
   on this model year.
 - Ground subclass per pin (chassis vs signal) — verify per factory diagram.
 - No ELM327 or SSM driver is implemented yet; the adapter contract exists

@@ -67,6 +67,9 @@ func (c Connector) Validate() error {
 	if c.PinCount <= 0 {
 		problems = append(problems, errors.New("pinCount must be positive"))
 	}
+	if len(c.Pins) == 0 {
+		problems = append(problems, errors.New("pins must contain at least one pin"))
+	}
 	seen := map[int]bool{}
 	for i, p := range c.Pins {
 		name := fmt.Sprintf("pins[%d]", i)
@@ -77,7 +80,7 @@ func (c Connector) Validate() error {
 			problems = append(problems, fmt.Errorf("%s: duplicate pin number %d", name, p.Number))
 		}
 		seen[p.Number] = true
-		if err := validateFact(name+".function", p.Function); err != nil {
+		if err := validateStringFact(name+".function", p.Function); err != nil {
 			problems = append(problems, err)
 		}
 	}

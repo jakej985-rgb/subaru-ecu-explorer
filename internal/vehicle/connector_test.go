@@ -90,7 +90,7 @@ func TestShippedDLCDefinition(t *testing.T) {
 	}
 
 	// Ground positions must be documented with standard evidence.
-	for _, n := range []int{3, 4, 5} {
+	for _, n := range []int{4, 5} {
 		p := byNumber[n]
 		if p.Function.Value == nil || *p.Function.Value != "ground" {
 			t.Fatalf("pin %d: expected ground function, got %+v", n, p.Function)
@@ -117,7 +117,7 @@ func TestShippedDLCDefinition(t *testing.T) {
 
 	// Manufacturer-discretionary pins must not claim vehicle-specific
 	// functions — SSM terminal assignments stay unverified.
-	for n := 8; n <= 13; n++ {
+	for _, n := range []int{1, 3, 8, 9, 11, 12, 13} {
 		if got := *byNumber[n].Function.Value; got != "manufacturer-discretionary" {
 			t.Fatalf("pin %d: expected manufacturer-discretionary, got %q", n, got)
 		}

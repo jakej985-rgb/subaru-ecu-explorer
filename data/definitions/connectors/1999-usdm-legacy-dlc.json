@@ -8,7 +8,21 @@
     {
       "number": 1,
       "function": {
-        "value": "j1850-pwm-positive",
+        "value": "manufacturer-discretionary",
+        "status": "confirmed",
+        "evidence": [
+          {
+            "source": "SAE J1962 / generic OBD-II pinout standard",
+            "description": "Reserved for manufacturer use; vehicle-specific assignment unknown"
+          }
+        ],
+        "notes": "Do not assume a function."
+      }
+    },
+    {
+      "number": 2,
+      "function": {
+        "value": "j1850-bus-positive",
         "status": "confirmed",
         "evidence": [
           {
@@ -20,30 +34,17 @@
       }
     },
     {
-      "number": 2,
-      "function": {
-        "value": "j1850-pwm-negative",
-        "status": "confirmed",
-        "evidence": [
-          {
-            "source": "SAE J1962 / generic OBD-II pinout standard",
-            "description": "Standard-assigned role only; population and use on this vehicle are unverified"
-          }
-        ]
-      }
-    },
-    {
       "number": 3,
       "function": {
-        "value": "ground",
+        "value": "manufacturer-discretionary",
         "status": "confirmed",
         "evidence": [
           {
             "source": "SAE J1962 / generic OBD-II pinout standard",
-            "description": "Standard-assigned ground; chassis vs signal subclass varies by reference"
+            "description": "Reserved for manufacturer use; vehicle-specific assignment unknown"
           }
         ],
-        "notes": "Verify chassis vs signal ground designation against the factory wiring diagram."
+        "notes": "Do not assume a function. Not a standard ground."
       }
     },
     {
@@ -128,12 +129,12 @@
     {
       "number": 10,
       "function": {
-        "value": "manufacturer-discretionary",
+        "value": "j1850-pwm-bus-negative",
         "status": "confirmed",
         "evidence": [
           {
             "source": "SAE J1962 / generic OBD-II pinout standard",
-            "description": "Reserved for manufacturer use; vehicle-specific assignment unknown"
+            "description": "Standard-assigned J1850 PWM bus negative role; population and use on this vehicle are unverified"
           }
         ]
       }
@@ -218,5 +219,5 @@
       }
     }
   ],
-  "notes": "Pin functions above are generic SAE J1962 OBD-II assignments only. Factory documentation reviewed for the 1999 USDM Legacy describes a 16-pin DLC shared by OBD-II and Subaru SSM but does not provide a verified per-pin vehicle mapping in this repository. Manufacturer-discretionary positions (8-13) and any Subaru-specific SSM terminals must be established from the correct factory wiring diagram before any hardware connects. See docs/OBD2_INTERFACE.md."
+  "notes": "Pin functions above are generic SAE J1962 OBD-II assignments only. Factory documentation reviewed for the 1999 USDM Legacy describes a 16-pin DLC shared by OBD-II and Subaru SSM but does not provide a verified per-pin vehicle mapping in this repository. Manufacturer-discretionary positions (1, 3, 8, 9, 11-13) and any Subaru-specific SSM terminals must be established from the correct factory wiring diagram before any hardware connects. See docs/OBD2_INTERFACE.md."
 }
