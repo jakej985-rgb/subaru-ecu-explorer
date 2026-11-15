@@ -52,9 +52,14 @@ func (t *Transport) expired() bool {
 func (t *Transport) Read(p []byte) (int, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	for t.in.Len() == 0 && !t.closed {
-		if t.expired() {
+	for {
+		// Match net.Conn: an expired deadline fails Read even if data is
+		// buffered.
+		if t.expired() && !t.closed {
 			return 0, adapter.ErrTimeout
+		}
+		if t.in.Len() > 0 || t.closed {
+			break
 		}
 		t.cond.Wait()
 	}
