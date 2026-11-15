@@ -264,6 +264,56 @@ func TestCancellationDuringBlockedRead(t *testing.T) {
 	}
 }
 
+func TestQueuedCallerHonorsCancellation(t *testing.T) {
+	tr := fake.NewTransport()
+	s := fake.NewSession(adapter.Info{ID: "dev", Kind: adapter.KindELM327},
+		adapter.Capabilities{ReadOnly: true, Transport: "fake"}, tr)
+	g := Wrap(s, &Policy{ResponseTimeout: 2 * time.Second})
+
+	// A occupies the session waiting on a silent device.
+	go func() { _, _ = g.Transact(context.Background(), OpReadData, []byte("a")) }()
+	time.Sleep(20 * time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	if _, err := g.Transact(ctx, OpReadData, []byte("b")); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context.DeadlineExceeded, got %v", err)
+	}
+	if el := time.Since(start); el > 500*time.Millisecond {
+		t.Fatalf("queued caller waited for in-flight exchange; took %s", el)
+	}
+}
+
+func TestCancelledPartialResponseDoesNotLeakIntoNext(t *testing.T) {
+	tr := fake.NewTransport()
+	s := fake.NewSession(adapter.Info{ID: "dev", Kind: adapter.KindELM327},
+		adapter.Capabilities{ReadOnly: true, Transport: "fake"}, tr)
+	g := Wrap(s, &Policy{
+		ResponseTimeout:     2 * time.Second,
+		ResponseIdleTimeout: 200 * time.Millisecond,
+	})
+
+	// A receives a partial reply, then is cancelled mid-response.
+	tr.Feed([]byte("AB"))
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(30*time.Millisecond, cancel)
+	if _, err := g.Transact(ctx, OpReadData, []byte("a")); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+
+	// The rest of A's reply arrives late; B must not see it.
+	tr.Feed([]byte("CD"))
+	time.AfterFunc(300*time.Millisecond, func() { tr.Feed([]byte("OK")) })
+	resp, err := g.Transact(context.Background(), OpReadData, []byte("b"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(resp) != "OK" {
+		t.Fatalf("stale bytes leaked into next response: %q", resp)
+	}
+}
+
 func TestContextDeadlineExpiryIsError(t *testing.T) {
 	g, _ := gatedSession(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)

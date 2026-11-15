@@ -102,6 +102,9 @@ var (
 	ErrPrecondition = errors.New("safety: precondition failed")
 	// ErrResponseTooLarge means the response exceeded MaxResponseBytes.
 	ErrResponseTooLarge = errors.New("safety: response exceeds MaxResponseBytes")
+	// ErrResync means leftover bytes from an interrupted exchange could not
+	// be cleared before the next request.
+	ErrResync = errors.New("safety: could not resynchronize session after interrupted exchange")
 )
 
 // GatedSession wraps an adapter.Session and is the supported API for
@@ -111,12 +114,50 @@ type GatedSession struct {
 	inner  adapter.Session
 	policy Policy
 
-	// txnMu serializes complete request/response exchanges so concurrent
-	// callers cannot consume each other's responses or deadlines.
-	txnMu sync.Mutex
+	// sem is a one-slot admission channel that serializes complete
+	// request/response exchanges so concurrent callers cannot consume each
+	// other's responses or deadlines. Unlike a mutex, waiting on it can be
+	// abandoned when the caller's context is done.
+	sem chan struct{}
+
+	// dirty is set when an exchange may have left unread response bytes
+	// on the line (cancellation, oversized reply, write failure). The next
+	// Transact drains before writing. Guarded by sem ownership.
+	dirty bool
 
 	mu      sync.Mutex
 	lastTxn time.Time
+}
+
+// txn holds per-exchange deadline state. All transport deadline updates
+// go through setDeadline so a cancellation callback cannot be overwritten
+// by the read loop, and cannot touch the transport after teardown.
+type txn struct {
+	g   *GatedSession
+	ctx context.Context
+
+	mu   sync.Mutex
+	done bool
+}
+
+func (t *txn) setDeadline(d time.Time) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.done {
+		return
+	}
+	if t.ctx.Err() != nil {
+		d = time.Now()
+	}
+	_ = t.g.inner.SetDeadline(d)
+}
+
+// finish disables the cancellation callback. After it returns, no callback
+// of this exchange can modify the transport deadline.
+func (t *txn) finish() {
+	t.mu.Lock()
+	t.done = true
+	t.mu.Unlock()
 }
 
 // Wrap returns a GatedSession enforcing policy over s. A nil policy uses
@@ -145,7 +186,7 @@ func Wrap(s adapter.Session, policy *Policy) *GatedSession {
 	if p.ResponseIdleTimeout <= 0 {
 		p.ResponseIdleTimeout = 100 * time.Millisecond
 	}
-	return &GatedSession{inner: s, policy: p}
+	return &GatedSession{inner: s, policy: p, sem: make(chan struct{}, 1)}
 }
 
 // Inner returns the wrapped session for protocol-layer code that needs raw
@@ -184,8 +225,14 @@ func (g *GatedSession) check(ctx context.Context, op Operation) error {
 // response until ResponseTimeout, the context deadline, or
 // MaxResponseBytes. Prohibited operations fail before any byte is written.
 func (g *GatedSession) Transact(ctx context.Context, op Operation, request []byte) ([]byte, error) {
-	g.txnMu.Lock()
-	defer g.txnMu.Unlock()
+	// Context-aware admission: a queued caller returns as soon as its
+	// context is done instead of waiting for the in-flight exchange.
+	select {
+	case g.sem <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	defer func() { <-g.sem }()
 
 	if err := g.check(ctx, op); err != nil {
 		return nil, err
@@ -208,18 +255,34 @@ func (g *GatedSession) Transact(ctx context.Context, op Operation, request []byt
 	if dl, ok := ctx.Deadline(); ok && dl.Before(ioDeadline) {
 		ioDeadline = dl
 	}
-	_ = g.inner.SetDeadline(ioDeadline)
-
-	// Interrupt in-flight I/O on cancellation of contexts without a
-	// deadline by forcing the transport deadline into the past.
-	stop := context.AfterFunc(ctx, func() { _ = g.inner.SetDeadline(time.Now()) })
+	t := &txn{g: g, ctx: ctx}
+	// Interrupt in-flight I/O on cancellation by forcing the transport
+	// deadline into the past. finish runs before sem is released (defers
+	// are LIFO), so a late callback cannot expire the next exchange.
+	stop := context.AfterFunc(ctx, func() { t.setDeadline(time.Now()) })
+	defer t.finish()
 	defer stop()
 
-	// Preconditions may have taken time or cancelled ctx; recheck before
-	// any byte is written.
+	// Clear leftovers from a previously interrupted exchange so they
+	// cannot be returned as this request's response.
+	if g.dirty {
+		if !g.drain(t, ioDeadline) {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			return nil, ErrResync
+		}
+		g.dirty = false
+	}
+	t.setDeadline(ioDeadline)
+
+	// Preconditions or draining may have taken time or cancelled ctx;
+	// recheck before any byte is written.
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	// From here on, any non-clean exit may leave reply bytes on the line.
+	g.dirty = true
 	if _, err := g.inner.Write(request); err != nil {
 		if cerr := ctx.Err(); cerr != nil {
 			return nil, cerr
@@ -247,14 +310,15 @@ func (g *GatedSession) Transact(ctx context.Context, op Operation, request []byt
 		if err := ctx.Err(); err != nil {
 			return resp, err
 		}
-		_ = g.inner.SetDeadline(deadline)
+		t.setDeadline(deadline)
 		n, err := g.inner.Read(buf)
 		if n > 0 {
 			resp = append(resp, buf[:n]...)
 			if len(resp) > g.policy.MaxResponseBytes {
 				// No response boundary was reached: drain leftovers so
-				// they cannot leak into the next Transact, then fail.
-				g.drain(ioDeadline)
+				// they cannot leak into the next Transact, then fail. If
+				// draining is cut short, the next Transact retries it.
+				g.dirty = !g.drain(t, ioDeadline)
 				return resp[:g.policy.MaxResponseBytes], ErrResponseTooLarge
 			}
 		}
@@ -278,24 +342,37 @@ func (g *GatedSession) Transact(ctx context.Context, op Operation, request []byt
 	if dl, ok := ctx.Deadline(); ok && !time.Now().Before(dl) {
 		return resp, context.DeadlineExceeded
 	}
+	// The response ended on an idle/response timeout: the line is clean.
+	g.dirty = false
 	return resp, nil
 }
 
 // drain discards pending bytes until the line is idle for
-// ResponseIdleTimeout or hardDeadline passes.
-func (g *GatedSession) drain(hardDeadline time.Time) {
+// ResponseIdleTimeout. It reports true only if the line went idle before
+// hardDeadline and the exchange's context is still live.
+func (g *GatedSession) drain(t *txn, hardDeadline time.Time) bool {
 	buf := make([]byte, 512)
 	for time.Now().Before(hardDeadline) {
+		if t.ctx.Err() != nil {
+			return false
+		}
 		dl := time.Now().Add(g.policy.ResponseIdleTimeout)
 		if dl.After(hardDeadline) {
 			dl = hardDeadline
 		}
-		_ = g.inner.SetDeadline(dl)
+		t.setDeadline(dl)
 		n, err := g.inner.Read(buf)
-		if err != nil || n == 0 {
-			return
+		if n > 0 {
+			continue
 		}
+		if err != nil && (errors.Is(err, adapter.ErrTimeout) || isTimeoutErr(err)) {
+			// Idle only counts if it was the idle window, not the hard
+			// deadline or a cancellation forcing the deadline.
+			return t.ctx.Err() == nil && time.Now().Before(hardDeadline)
+		}
+		return false
 	}
+	return false
 }
 
 func isTimeoutErr(err error) bool {
