@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "subaru-legacy-outback-1999-usdm-ej25-manual",
+  "displayName": "1999 USDM Subaru Legacy Outback EJ25 manual hardware catalog",
+  "entries": [
+    {
+      "id": "engine-ecu",
+      "configuration": {
+        "value": "subaru-legacy-outback-1999-usdm-ej25-manual",
+        "status": "confirmed",
+        "evidence": [
+          {
+            "source": "user-confirmed project target"
+          }
+        ]
+      },
+      "module": "engine-ecu",
+      "hardware": {
+        "status": "unknown",
+        "notes": "ECU part number and ROM identity must be read from the installed ECU label"
+      },
+      "tier": "unresolved",
+      "notes": "Do not infer ECU variant from model year or engine family alone; multiple ECU variants may apply."
+    },
+    {
+      "id": "abs-controller",
+      "configuration": {
+        "value": "subaru-legacy-outback-1999-usdm-ej25-manual",
+        "status": "confirmed",
+        "evidence": [
+          {
+            "source": "user-confirmed project target"
+          }
+        ]
+      },
+      "module": "abs-controller",
+      "hardware": {
+        "status": "unknown",
+        "notes": "Controller and hydraulic assembly identities must be inspected separately"
+      },
+      "tier": "unresolved",
+      "notes": "ABS controller and hydraulic assembly part numbers are distinct identifiers; neither is confirmed."
+    },
+    {
+      "id": "transmission-controller",
+      "configuration": {
+        "value": "subaru-legacy-outback-1999-usdm-ej25-manual",
+        "status": "confirmed",
+        "evidence": [
+          {
+            "source": "user-confirmed project target"
+          }
+        ]
+      },
+      "module": "transmission-controller",
+      "hardware": {
+        "status": "unknown",
+        "notes": "Whether a separate transmission controller exists is unverified; the manual gearbox family is also unknown"
+      },
+      "tier": "unresolved"
+    }
+  ]
+}
