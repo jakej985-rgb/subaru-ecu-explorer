@@ -72,7 +72,7 @@ func (p *VehicleProfile) UnmarshalJSON(data []byte) error {
 		}
 	}
 	decoded := alias(*p)
-	if err := json.Unmarshal(data, &decoded); err != nil {
+	if err := decodeStrict(data, &decoded); err != nil {
 		return err
 	}
 	*p = VehicleProfile(decoded)

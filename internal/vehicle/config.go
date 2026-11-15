@@ -45,7 +45,7 @@ func (c *EngineConfig) UnmarshalJSON(data []byte) error {
 		}
 	}
 	decoded := alias(*c)
-	if err := json.Unmarshal(data, &decoded); err != nil {
+	if err := decodeStrict(data, &decoded); err != nil {
 		return err
 	}
 	*c = EngineConfig(decoded)

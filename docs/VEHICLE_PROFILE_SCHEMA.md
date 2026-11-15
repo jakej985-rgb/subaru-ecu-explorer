@@ -49,6 +49,8 @@ Run tests with:
 go test ./...
 ```
 
+Definition loading, strict decoding, cross-reference checks, conflict detection, and the `validate-definitions` CLI are documented in [Profile & Definition Validation](PROFILE_VALIDATION.md).
+
 ## Compatibility policy
 
 Schema changes that alter meaning or validation rules require a schema version change and migration notes. Additive optional fields may remain within the same major version when backward compatibility is preserved. Factory facts and user annotations must remain separate; editing a user annotation must never mutate factory profile data.
