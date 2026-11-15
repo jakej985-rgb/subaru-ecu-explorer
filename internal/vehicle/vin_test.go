@@ -207,7 +207,6 @@ func TestEmptyVINRejected(t *testing.T) {
 	}
 }
 
-
 func TestDecodeVINStripsAllWhitespace(t *testing.T) {
 	for _, input := range []string{
 		"JF1CE4G22\tXH000001",

@@ -49,15 +49,28 @@ func TestCatalogEntryTierRules(t *testing.T) {
 		t.Fatal("expected unresolved entry with hardware to fail")
 	}
 
-	// Confirmed and corroborated follow the same rules.
+	// Confirmed and corroborated follow the same rules; corroborated
+	// additionally needs two distinct evidence sources.
 	for _, tier := range []EvidenceTier{TierConfirmed, TierCorroborated} {
 		e = validEntry()
 		e.Tier = tier
 		e.Hardware = refFact("hw-1")
 		e.Evidence = []Evidence{{Source: "s"}}
+		if tier == TierCorroborated {
+			e.Evidence = append(e.Evidence, Evidence{Source: "s2"})
+		}
 		if err := e.Validate(); err != nil {
 			t.Errorf("tier %s should validate, got %v", tier, err)
 		}
+	}
+
+	// Duplicate citations to one source must not satisfy corroboration.
+	e = validEntry()
+	e.Tier = TierCorroborated
+	e.Hardware = refFact("hw-1")
+	e.Evidence = []Evidence{{Source: "s"}, {Source: "s"}}
+	if err := e.Validate(); err == nil {
+		t.Fatal("expected corroborated tier with a single distinct source to fail")
 	}
 }
 

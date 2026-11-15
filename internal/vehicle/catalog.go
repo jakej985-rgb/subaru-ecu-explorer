@@ -17,8 +17,11 @@ const CatalogSchemaVersion = "1.0.0"
 type ModuleKind string
 
 const (
-	ModuleEngineECU              ModuleKind = "engine-ecu"
-	ModuleABSController          ModuleKind = "abs-controller"
+	ModuleEngineECU     ModuleKind = "engine-ecu"
+	ModuleABSController ModuleKind = "abs-controller"
+	// ModuleABSHydraulicAssembly is the ABS hydraulic/modulator unit, a
+	// separate hardware identity from the electronic ABS controller.
+	ModuleABSHydraulicAssembly   ModuleKind = "abs-hydraulic-assembly"
 	ModuleTransmissionController ModuleKind = "transmission-controller"
 	ModuleOther                  ModuleKind = "other-module"
 )
@@ -52,21 +55,46 @@ type HardwareProfile struct {
 	Notes         string       `json:"notes,omitempty"`
 }
 
+// ConflictStatus is the resolution state of a structured conflict record.
+type ConflictStatus string
+
+const (
+	ConflictOpen     ConflictStatus = "open"
+	ConflictResolved ConflictStatus = "resolved"
+)
+
+// ConflictClaim is one side of a disputed attribute: the claimed value, its
+// source, and optionally the catalog entry asserting it.
+type ConflictClaim struct {
+	Value  string `json:"value"`
+	Source string `json:"source"`
+	Entry  string `json:"entry,omitempty"`
+}
+
+// ConflictRecord documents a structured disagreement: which attribute is
+// disputed, the competing claims with provenance, and whether it is resolved.
+type ConflictRecord struct {
+	Attribute string          `json:"attribute"`
+	Claims    []ConflictClaim `json:"claims"`
+	Status    ConflictStatus  `json:"status"`
+	Notes     string          `json:"notes,omitempty"`
+}
+
 // CatalogEntry links one vehicle configuration to compatibility evidence for
 // one module kind. Hardware is a fact reference to a HardwareProfile ID and
-// must be empty for unresolved entries. Applicability is an optional production
-// range fact. Conflicts record contradictory evidence explicitly instead of
-// silently resolving it.
+// must be empty for unresolved entries. Applicability holds structured
+// fitment constraints evaluated by the resolver. Conflicts are structured
+// records of contradictory evidence, never silently resolved.
 type CatalogEntry struct {
-	ID            string                 `json:"id"`
-	Configuration Fact[string]           `json:"configuration"`
-	Module        ModuleKind             `json:"module"`
-	Hardware      Fact[string]           `json:"hardware"`
-	Tier          EvidenceTier           `json:"tier"`
-	Applicability *Fact[ProductionRange] `json:"applicability,omitempty"`
-	Evidence      []Evidence             `json:"evidence,omitempty"`
-	Conflicts     []string               `json:"conflicts,omitempty"`
-	Notes         string                 `json:"notes,omitempty"`
+	ID            string           `json:"id"`
+	Configuration Fact[string]     `json:"configuration"`
+	Module        ModuleKind       `json:"module"`
+	Hardware      Fact[string]     `json:"hardware"`
+	Tier          EvidenceTier     `json:"tier"`
+	Applicability *Applicability   `json:"applicability,omitempty"`
+	Evidence      []Evidence       `json:"evidence,omitempty"`
+	Conflicts     []ConflictRecord `json:"conflicts,omitempty"`
+	Notes         string           `json:"notes,omitempty"`
 }
 
 // UnmarshalJSON rejects an explicit null applicability, which the schema
@@ -103,6 +131,7 @@ type CompatibilityCatalog struct {
 var moduleKinds = map[ModuleKind]bool{
 	ModuleEngineECU:              true,
 	ModuleABSController:          true,
+	ModuleABSHydraulicAssembly:   true,
 	ModuleTransmissionController: true,
 	ModuleOther:                  true,
 }
@@ -170,17 +199,62 @@ func (e CatalogEntry) Validate() error {
 			problems = append(problems, errors.New("tier \"unresolved\" must not assert a hardware reference"))
 		}
 	}
+	if e.Tier == TierCorroborated && distinctEvidenceSources(e.Evidence) < 2 {
+		problems = append(problems, errors.New("tier \"corroborated\" requires evidence from at least two distinct sources"))
+	}
 	for i, item := range e.Evidence {
 		if strings.TrimSpace(item.Source) == "" {
 			problems = append(problems, fmt.Errorf("evidence[%d].source is required", i))
 		}
 	}
+	for i, c := range e.Conflicts {
+		if err := c.Validate(); err != nil {
+			problems = append(problems, fmt.Errorf("conflicts[%d]: %w", i, err))
+		}
+	}
 	if e.Applicability != nil {
-		if err := validateFact("applicability", *e.Applicability); err != nil {
-			problems = append(problems, err)
+		if err := e.Applicability.Validate(); err != nil {
+			problems = append(problems, fmt.Errorf("applicability: %w", err))
 		}
 	}
 	return errors.Join(problems...)
+}
+
+// Validate checks a structured conflict record: a known status, at least two
+// competing claims, and non-empty claim values/sources.
+func (c ConflictRecord) Validate() error {
+	var problems []error
+	switch c.Status {
+	case ConflictOpen, ConflictResolved:
+	default:
+		problems = append(problems, fmt.Errorf("invalid conflict status %q", c.Status))
+	}
+	if strings.TrimSpace(c.Attribute) == "" {
+		problems = append(problems, errors.New("attribute is required"))
+	}
+	if len(c.Claims) < 2 {
+		problems = append(problems, errors.New("at least two competing claims are required"))
+	}
+	for i, claim := range c.Claims {
+		if strings.TrimSpace(claim.Value) == "" {
+			problems = append(problems, fmt.Errorf("claims[%d].value is required", i))
+		}
+		if strings.TrimSpace(claim.Source) == "" {
+			problems = append(problems, fmt.Errorf("claims[%d].source is required", i))
+		}
+	}
+	return errors.Join(problems...)
+}
+
+// distinctEvidenceSources counts unique non-empty evidence source labels.
+func distinctEvidenceSources(evidence []Evidence) int {
+	seen := map[string]bool{}
+	for _, e := range evidence {
+		if s := strings.TrimSpace(e.Source); s != "" {
+			seen[s] = true
+		}
+	}
+	return len(seen)
 }
 
 func (c CompatibilityCatalog) Validate() error {

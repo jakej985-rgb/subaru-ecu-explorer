@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "elm327-odbii",
+  "displayName": "ELM327-compatible OBD-II adapter",
+  "kind": "elm327-odbii",
+  "transport": {
+    "value": "obd-ii",
+    "status": "confirmed",
+    "evidence": [
+      {
+        "source": "project architecture documentation",
+        "reference": "README.md / ROADMAP.md hardware paths"
+      }
+    ]
+  },
+  "protocol": {
+    "value": "generic-obd-ii",
+    "status": "confirmed",
+    "evidence": [
+      {
+        "source": "project architecture documentation",
+        "description": "ELM327 compatibility does not imply Subaru SSM capability"
+      }
+    ]
+  },
+  "readOnly": {
+    "value": true,
+    "status": "confirmed",
+    "evidence": [
+      {
+        "source": "project safety policy",
+        "reference": "docs/SAFETY.md"
+      }
+    ],
+    "notes": "Project operates read-only regardless of adapter capability"
+  },
+  "notes": "Interface path only. Support for this adapter says nothing about which vehicle modules are installed or reachable."
+}

@@ -36,10 +36,29 @@
       "module": "abs-controller",
       "hardware": {
         "status": "unknown",
-        "notes": "Controller and hydraulic assembly identities must be inspected separately"
+        "notes": "Electronic ABS controller identity must be inspected separately from the hydraulic assembly"
       },
       "tier": "unresolved",
-      "notes": "ABS controller and hydraulic assembly part numbers are distinct identifiers; neither is confirmed."
+      "notes": "ABS electronic controller part number is unconfirmed; do not conflate it with the hydraulic assembly."
+    },
+    {
+      "id": "abs-hydraulic-assembly",
+      "configuration": {
+        "value": "subaru-legacy-outback-1999-usdm-ej25-manual",
+        "status": "confirmed",
+        "evidence": [
+          {
+            "source": "user-confirmed project target"
+          }
+        ]
+      },
+      "module": "abs-hydraulic-assembly",
+      "hardware": {
+        "status": "unknown",
+        "notes": "Hydraulic assembly/modulator part number must be read from its own label"
+      },
+      "tier": "unresolved",
+      "notes": "Hydraulic assembly is a distinct hardware identity from the ABS electronic controller; neither is confirmed."
     },
     {
       "id": "transmission-controller",
