@@ -16,6 +16,7 @@ type Manager struct {
 	mu       sync.Mutex
 	drivers  map[Kind]Driver
 	sessions map[string]*managed // key: candidate Info.ID
+	shutdown bool
 }
 
 type sessionState uint8
@@ -93,7 +94,64 @@ func (m *Manager) Discover(ctx context.Context) ([]Candidate, error) {
 // Connect opens an exclusively owned session for candidate. It fails with
 // ErrBusy if the candidate ID is already connected through this manager.
 func (m *Manager) Connect(ctx context.Context, candidate Candidate) (Session, error) {
+	return m.connect(ctx, candidate)
+}
+
+// ReconnectPolicy controls ConnectWithPolicy retries. A zero value uses
+// DefaultReconnectPolicy.
+type ReconnectPolicy struct {
+	// MaxAttempts is the total number of Open attempts (>=1).
+	MaxAttempts int
+	// Backoff is the delay between attempts.
+	Backoff time.Duration
+}
+
+// DefaultReconnectPolicy retries transient open failures three times with
+// a short backoff.
+var DefaultReconnectPolicy = ReconnectPolicy{MaxAttempts: 3, Backoff: 250 * time.Millisecond}
+
+// permanent reports whether err must not be retried.
+func permanent(err error) bool {
+	return errors.Is(err, ErrBusy) ||
+		errors.Is(err, ErrUnsupported) ||
+		errors.Is(err, ErrPermission) ||
+		errors.Is(err, ErrProtocol)
+}
+
+// ConnectWithPolicy connects like Connect but retries transient failures
+// (missing device, I/O errors) according to policy. Context cancellation
+// and permanent errors abort immediately.
+func (m *Manager) ConnectWithPolicy(ctx context.Context, candidate Candidate, policy ReconnectPolicy) (Session, error) {
+	if policy.MaxAttempts <= 0 {
+		policy = DefaultReconnectPolicy
+	}
+	var err error
+	for attempt := 0; attempt < policy.MaxAttempts; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(policy.Backoff):
+			}
+		}
+		var s Session
+		s, err = m.connect(ctx, candidate)
+		if err == nil {
+			return s, nil
+		}
+		if permanent(err) || ctx.Err() != nil {
+			return nil, err
+		}
+	}
+	return nil, err
+}
+
+func (m *Manager) connect(ctx context.Context, candidate Candidate) (Session, error) {
 	m.mu.Lock()
+	if m.shutdown {
+		m.mu.Unlock()
+		return nil, ErrClosed
+	}
 	d, ok := m.drivers[candidate.Info.Kind]
 	if !ok {
 		m.mu.Unlock()
@@ -116,9 +174,50 @@ func (m *Manager) Connect(ctx context.Context, candidate Candidate) (Session, er
 		delete(m.sessions, candidate.Info.ID)
 		return nil, err
 	}
+	if m.shutdown {
+		// Shutdown raced the open: close immediately, never expose it.
+		delete(m.sessions, candidate.Info.ID)
+		m.mu.Unlock()
+		_ = s.Close()
+		m.mu.Lock()
+		return nil, ErrClosed
+	}
 	res.session = s
 	res.state = stateActive
 	return s, nil
+}
+
+// Shutdown closes every active session and prevents new connections. It is
+// safe to call multiple times and from any goroutine; session close errors
+// are joined into the result. Sessions still opening are closed as soon as
+// Open returns. After Shutdown, Connect fails with ErrClosed.
+func (m *Manager) Shutdown(ctx context.Context) error {
+	m.mu.Lock()
+	if m.shutdown {
+		m.mu.Unlock()
+		return nil
+	}
+	m.shutdown = true
+	sessions := make([]Session, 0, len(m.sessions))
+	for id, man := range m.sessions {
+		if man.state == stateActive && man.session != nil {
+			sessions = append(sessions, man.session)
+		}
+		delete(m.sessions, id)
+	}
+	m.mu.Unlock()
+
+	var errs []error
+	for _, s := range sessions {
+		if err := s.Close(); err != nil {
+			errs = append(errs, err)
+		}
+		if ctx.Err() != nil {
+			errs = append(errs, ctx.Err())
+			break
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // Disconnect closes the session for id, if any, and releases ownership only

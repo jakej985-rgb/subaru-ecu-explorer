@@ -5,6 +5,7 @@ package fake
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"sync"
 	"time"
@@ -155,13 +156,19 @@ func (s *Session) Info() adapter.Info                 { return s.info }
 func (s *Session) Capabilities() adapter.Capabilities { return s.caps }
 func (s *Session) Health() adapter.Health             { return s.health }
 
+// SetHealth overrides the reported health state (test control).
+func (s *Session) SetHealth(h adapter.Health) {
+	s.health = h
+}
+
 // Driver is a scriptable fake adapter.Driver.
 type Driver struct {
-	kind        adapter.Kind
-	candidates  []adapter.Candidate
-	discoverErr error
-	openErr     error
-	sessions    []*Session
+	kind         adapter.Kind
+	candidates   []adapter.Candidate
+	discoverErr  error
+	openErr      error
+	openFailures int // fail the next N Open calls with openErr (or a generic error)
+	sessions     []*Session
 }
 
 // NewDriver returns a fake driver for kind with the given candidates.
@@ -174,6 +181,10 @@ func (d *Driver) SetDiscoverError(err error) { d.discoverErr = err }
 
 // SetOpenError makes Open fail.
 func (d *Driver) SetOpenError(err error) { d.openErr = err }
+
+// SetOpenFailures makes the next n Open calls fail. If no open error was
+// set, a generic transient error is used.
+func (d *Driver) SetOpenFailures(n int) { d.openFailures = n }
 
 // Sessions returns sessions created by Open.
 func (d *Driver) Sessions() []*Session { return d.sessions }
@@ -198,6 +209,10 @@ func (d *Driver) Open(ctx context.Context, c adapter.Candidate) (adapter.Session
 	}
 	if d.openErr != nil {
 		return nil, d.openErr
+	}
+	if d.openFailures > 0 {
+		d.openFailures--
+		return nil, errors.New("fake: transient open failure")
 	}
 	for _, cand := range d.candidates {
 		if cand.Info.ID == c.Info.ID {

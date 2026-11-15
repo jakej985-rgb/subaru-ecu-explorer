@@ -122,6 +122,9 @@ var (
 	ErrTimeout = errors.New("adapter: i/o timeout")
 	// ErrUnsupported indicates the driver does not support the operation.
 	ErrUnsupported = errors.New("adapter: unsupported operation")
+	// ErrPermission indicates the host denied access to the device (for
+	// example missing read/write permission on a serial node).
+	ErrPermission = errors.New("adapter: permission denied")
 	// ErrProtocol indicates malformed adapter framing or an unexpected
 	// handshake response.
 	ErrProtocol = errors.New("adapter: protocol error")
