@@ -1,4 +1,6 @@
-# Safety and Bench/Vehicle Procedures
+# Safety
+
+See `SAFETY_CONTROLS.md` for the enforced operation gate (allowlists, read-only capability checks, health gates, rate limits). and Bench/Vehicle Procedures
 
 ## Read-only development policy
 

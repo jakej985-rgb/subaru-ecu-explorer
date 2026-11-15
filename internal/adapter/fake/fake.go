@@ -155,6 +155,11 @@ func (s *Session) Info() adapter.Info                 { return s.info }
 func (s *Session) Capabilities() adapter.Capabilities { return s.caps }
 func (s *Session) Health() adapter.Health             { return s.health }
 
+// SetHealth overrides the reported health state (test control).
+func (s *Session) SetHealth(h adapter.Health) {
+	s.health = h
+}
+
 // Driver is a scriptable fake adapter.Driver.
 type Driver struct {
 	kind        adapter.Kind
