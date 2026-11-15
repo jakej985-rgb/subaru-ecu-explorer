@@ -78,6 +78,90 @@ func TestStrictDecodeRejectsUnknownFields(t *testing.T) {
 	}
 }
 
+// shippedDoc returns the first shipped definition in kindDir as a generic map.
+func shippedDoc(t *testing.T, kindDir string) map[string]any {
+	t.Helper()
+	matches, err := filepath.Glob(filepath.Join(definitionsRoot, kindDir, "*.json"))
+	if err != nil || len(matches) == 0 {
+		t.Fatalf("no shipped %s definition found: %v", kindDir, err)
+	}
+	data, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatal(err)
+	}
+	return doc
+}
+
+// loadSingle writes data as the only file in kindDir and loads it.
+func loadSingle(t *testing.T, kindDir string, data []byte) LoadReport {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, kindDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, kindDir, "doc.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return LoadDefinitions(dir, NewRegistry())
+}
+
+func firstErr(report LoadReport) error {
+	for _, res := range report.Results {
+		if res.Err != nil {
+			return res.Err
+		}
+	}
+	return nil
+}
+
+func TestStrictDecodeRejectsUnknownFieldsInValidDocs(t *testing.T) {
+	cases := []struct {
+		name    string
+		kindDir string
+		mutate  func(map[string]any)
+	}{
+		{"profile top-level", "vehicles", func(d map[string]any) { d["surpriseField"] = 42 }},
+		{"engine top-level", "engines", func(d map[string]any) { d["surpriseField"] = 42 }},
+		{"catalog entry", "catalogs", func(d map[string]any) {
+			entries, ok := d["entries"].([]any)
+			if !ok || len(entries) == 0 {
+				t.Fatal("shipped catalog has no entries")
+			}
+			entries[0].(map[string]any)["surpriseField"] = 42
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Sanity: the unmodified shipped doc loads cleanly on its own.
+			orig, _ := json.Marshal(shippedDoc(t, tc.kindDir))
+			if err := firstErr(loadSingle(t, tc.kindDir, orig)); err != nil {
+				t.Fatalf("unmodified doc should load: %v", err)
+			}
+			doc := shippedDoc(t, tc.kindDir)
+			tc.mutate(doc)
+			data, _ := json.Marshal(doc)
+			err := firstErr(loadSingle(t, tc.kindDir, data))
+			if err == nil || !strings.Contains(err.Error(), "unknown field") {
+				t.Fatalf("expected unknown field error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestStrictDecodeRejectsTrailingContent(t *testing.T) {
+	orig, _ := json.Marshal(shippedDoc(t, "vehicles"))
+	for _, tail := range []string{" {}", " garbage"} {
+		err := firstErr(loadSingle(t, "vehicles", append(append([]byte{}, orig...), tail...)))
+		if err == nil || !strings.Contains(err.Error(), "trailing") {
+			t.Fatalf("tail %q: expected trailing content error, got %v", tail, err)
+		}
+	}
+}
+
 func TestIncompleteProfileFailsValidation(t *testing.T) {
 	// A profile missing required fact fields decodes to empty statuses and
 	// must fail validation — unknowns must be explicit, not absent.

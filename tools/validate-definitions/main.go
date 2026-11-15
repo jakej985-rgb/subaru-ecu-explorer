@@ -33,13 +33,22 @@ func main() {
 		fmt.Println()
 	}
 
-	if report.OK() {
-		if err := vehicle.ValidateRegistry(r); err != nil {
-			fmt.Printf("reference check FAIL: %v\n", err)
-			failed++
-		} else {
-			fmt.Printf("reference check ok (%d profiles, %d engines, %d transmissions, %d drivetrains, %d trims, %d configurations, %d hardware, %d catalogs)\n",
-				len(r.Profiles), len(r.Engines), len(r.Transmissions), len(r.Drivetrains), len(r.Trims), len(r.Configurations), len(r.Hardware), len(r.Catalogs))
+	// Run reference checks even after load failures so independent problems
+	// surface in one pass; unresolved refs may stem from files that failed above.
+	if err := vehicle.ValidateRegistry(r); err != nil {
+		fmt.Printf("reference check FAIL: %v\n", err)
+		if !report.OK() {
+			fmt.Println("  (some unresolved references may be caused by files that failed to load)")
+		}
+		failed++
+	} else {
+		fmt.Printf("reference check ok (%d profiles, %d engines, %d transmissions, %d drivetrains, %d trims, %d configurations, %d hardware, %d catalogs)\n",
+			len(r.Profiles), len(r.Engines), len(r.Transmissions), len(r.Drivetrains), len(r.Trims), len(r.Configurations), len(r.Hardware), len(r.Catalogs))
+	}
+
+	for _, cat := range r.Catalogs {
+		for _, c := range cat.Conflicts() {
+			fmt.Printf("WARN catalog %s: %s\n", cat.ID, c)
 		}
 	}
 

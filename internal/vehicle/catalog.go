@@ -84,7 +84,7 @@ func (e *CatalogEntry) UnmarshalJSON(data []byte) error {
 		}
 	}
 	decoded := alias(*e)
-	if err := json.Unmarshal(data, &decoded); err != nil {
+	if err := decodeStrict(data, &decoded); err != nil {
 		return err
 	}
 	*e = CatalogEntry(decoded)

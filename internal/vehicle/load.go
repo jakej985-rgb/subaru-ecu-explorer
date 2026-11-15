@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -98,11 +99,7 @@ func loadDefinitionFile(path, kind string, r *Registry) error {
 	if err != nil {
 		return err
 	}
-	decode := func(out any) error {
-		dec := json.NewDecoder(bytes.NewReader(data))
-		dec.DisallowUnknownFields()
-		return dec.Decode(out)
-	}
+	decode := func(out any) error { return decodeStrict(data, out) }
 	var regErr error
 	switch kind {
 	case "profile":
@@ -157,6 +154,20 @@ func loadDefinitionFile(path, kind string, r *Registry) error {
 		return fmt.Errorf("unknown definition kind %q", kind)
 	}
 	return regErr
+}
+
+// decodeStrict decodes exactly one JSON value into out, rejecting unknown
+// fields and any trailing content.
+func decodeStrict(data []byte, out any) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(out); err != nil {
+		return err
+	}
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		return errors.New("unexpected trailing content after JSON document")
+	}
+	return nil
 }
 
 // ValidateRegistry runs cross-document reference checks after loading: every
