@@ -241,6 +241,37 @@ func (r *Registry) ResolveCatalog(c CompatibilityCatalog) error {
 	return errors.Join(problems...)
 }
 
+// Conflicts reports configuration/module pairs where entries name different
+// hardware profiles. Any disagreement — even between candidates — is surfaced
+// explicitly rather than silently resolved.
+func (c CompatibilityCatalog) Conflicts() []string {
+	type key struct {
+		config string
+		module ModuleKind
+	}
+	seen := map[key]map[string]string{}
+	var out []string
+	for _, e := range c.Entries {
+		if e.Configuration.Value == nil || e.Hardware.Value == nil {
+			continue
+		}
+		k := key{config: *e.Configuration.Value, module: e.Module}
+		hw := *e.Hardware.Value
+		if m, ok := seen[k]; ok {
+			for prevID := range m {
+				if prevID != hw {
+					out = append(out, fmt.Sprintf("%s/%s: entries disagree on hardware (%s vs %s)", k.config, k.module, prevID, hw))
+				}
+			}
+			m[hw] = e.ID
+		} else {
+			seen[k] = map[string]string{hw: e.ID}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // CatalogCandidates returns entries for a configuration and module ordered by
 // evidence strength (confirmed, corroborated, candidate, unresolved). It only
 // reports compatibility evidence; it never asserts what hardware is installed.
