@@ -41,9 +41,9 @@ type ProductionRange struct {
 }
 
 type VehicleProfile struct {
-	SchemaVersion string                 `json:"schemaVersion"`
-	ID            string                 `json:"id"`
-	DisplayName   string                 `json:"displayName"`
+	SchemaVersion string                  `json:"schemaVersion"`
+	ID            string                  `json:"id"`
+	DisplayName   string                  `json:"displayName"`
 	ModelYear     Fact[int]               `json:"modelYear"`
 	Market        Fact[string]            `json:"market"`
 	Make          Fact[string]            `json:"make"`

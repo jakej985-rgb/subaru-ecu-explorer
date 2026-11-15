@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "arduino-mega-serial",
+  "displayName": "Arduino Mega 2560 R3 acquisition interface",
+  "kind": "arduino-serial",
+  "transport": {
+    "value": "usb-serial",
+    "status": "confirmed",
+    "evidence": [
+      {
+        "source": "project architecture documentation",
+        "reference": "ROADMAP.md Arduino interface path"
+      }
+    ]
+  },
+  "protocol": {
+    "value": "framed-versioned-acquisition",
+    "status": "confirmed",
+    "evidence": [
+      {
+        "source": "project architecture documentation",
+        "description": "Firmware streams framed, versioned acquisition messages over USB serial to the Go service"
+      }
+    ]
+  },
+  "readOnly": {
+    "value": true,
+    "status": "confirmed",
+    "evidence": [
+      {
+        "source": "project safety policy",
+        "reference": "docs/SAFETY.md"
+      }
+    ],
+    "notes": "Vehicle connection remains gated by bench validation and safety review"
+  },
+  "notes": "Interface path only. Requires the approved transceiver/protection stage before any vehicle connection; says nothing about installed modules."
+}

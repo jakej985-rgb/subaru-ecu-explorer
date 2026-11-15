@@ -69,10 +69,10 @@ func TestEngineConfigProductionNull(t *testing.T) {
 		`"cylinders":{"status":"unknown"},"aspiration":{"status":"unknown"},` +
 		`"fuelSystem":{"status":"unknown"},"valvetrain":{"status":"unknown"}`
 	cases := map[string]bool{
-		"{" + base + "}":                                  true,
+		"{" + base + "}": true,
 		"{" + base + `,"production":{"status":"unknown"}}`: true,
-		"{" + base + `,"production":null}`:                false,
-		"{" + base + `,"Production":null}`:                false,
+		"{" + base + `,"production":null}`:                 false,
+		"{" + base + `,"Production":null}`:                 false,
 	}
 	for doc, ok := range cases {
 		var c EngineConfig

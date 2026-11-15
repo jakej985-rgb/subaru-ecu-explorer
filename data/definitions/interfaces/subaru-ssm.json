@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "subaru-ssm",
+  "displayName": "Subaru SSM diagnostic interface",
+  "kind": "subaru-ssm",
+  "transport": {
+    "status": "unknown",
+    "notes": "Physical transport (K-line/L-line/serial details) requires Phase 2 hardware research"
+  },
+  "protocol": {
+    "value": "subaru-ssm",
+    "status": "confirmed",
+    "evidence": [
+      {
+        "source": "project architecture documentation",
+        "reference": "docs/SSM_PROTOCOL.md"
+      }
+    ],
+    "notes": "Protocol family documented; message-level details still under research"
+  },
+  "readOnly": {
+    "value": true,
+    "status": "confirmed",
+    "evidence": [
+      {
+        "source": "project safety policy",
+        "reference": "docs/SAFETY.md"
+      }
+    ]
+  },
+  "notes": "Interface path only. SSM access does not establish which modules exist on the target vehicle."
+}

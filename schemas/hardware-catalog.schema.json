@@ -2,12 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/jakej985-rgb/subaru-ecu-explorer/blob/main/schemas/hardware-catalog.schema.json",
   "title": "Subaru ECU Explorer Hardware Compatibility Catalog",
-  "description": "Versioned catalog linking vehicle configurations to candidate ECU/module hardware with evidence tiers. Candidates are never presented as installed hardware.",
+  "description": "Versioned catalog linking vehicle configurations to candidate ECU/module hardware with evidence tiers and structured applicability constraints. Candidates are never presented as installed hardware. The corroborated tier additionally requires evidence from at least two distinct sources (enforced by the Go validator).",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "id", "displayName", "entries"],
   "properties": {
-    "schemaVersion": { "const": "1.0.0" },
+    "schemaVersion": { "const": "2.0.0" },
     "id": { "type": "string", "minLength": 1, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
     "displayName": { "type": "string", "minLength": 1 },
     "entries": {
@@ -59,6 +59,24 @@
         }
       ]
     },
+    "intRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "min": { "type": "integer" },
+        "max": { "type": "integer" }
+      },
+      "anyOf": [
+        { "required": ["min"], "properties": { "min": { "not": { "const": 0 } } } },
+        { "required": ["max"], "properties": { "max": { "not": { "const": 0 } } } }
+      ]
+    },
+    "intRangeFact": {
+      "allOf": [
+        { "$ref": "#/$defs/factBase" },
+        { "type": "object", "properties": { "value": { "$ref": "#/$defs/intRange" } } }
+      ]
+    },
     "productionRange": {
       "type": "object",
       "additionalProperties": false,
@@ -73,6 +91,49 @@
         { "type": "object", "properties": { "value": { "$ref": "#/$defs/productionRange" } } }
       ]
     },
+    "applicability": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "modelYear": { "$ref": "#/$defs/intRangeFact" },
+        "market": { "$ref": "#/$defs/stringFact" },
+        "model": { "$ref": "#/$defs/stringFact" },
+        "body": { "$ref": "#/$defs/stringFact" },
+        "engine": { "$ref": "#/$defs/stringFact" },
+        "transmission": { "$ref": "#/$defs/stringFact" },
+        "drivetrain": { "$ref": "#/$defs/stringFact" },
+        "production": { "$ref": "#/$defs/productionFact" },
+        "options": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/stringFact" }
+        }
+      }
+    },
+    "conflictClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "source"],
+      "properties": {
+        "value": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 },
+        "entry": { "type": "string" }
+      }
+    },
+    "conflictRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attribute", "claims", "status"],
+      "properties": {
+        "attribute": { "type": "string", "minLength": 1 },
+        "claims": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/conflictClaim" }
+        },
+        "status": { "enum": ["open", "resolved"] },
+        "notes": { "type": "string" }
+      }
+    },
     "catalogEntry": {
       "type": "object",
       "additionalProperties": false,
@@ -80,12 +141,15 @@
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "configuration": { "$ref": "#/$defs/stringFact" },
-        "module": { "enum": ["engine-ecu", "abs-controller", "transmission-controller", "other-module"] },
+        "module": { "enum": ["engine-ecu", "abs-controller", "abs-hydraulic-assembly", "transmission-controller", "other-module"] },
         "hardware": { "$ref": "#/$defs/stringFact" },
         "tier": { "enum": ["confirmed", "corroborated", "candidate", "unresolved"] },
-        "applicability": { "$ref": "#/$defs/productionFact" },
+        "applicability": { "$ref": "#/$defs/applicability" },
         "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
-        "conflicts": { "type": "array", "items": { "type": "string" } },
+        "conflicts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/conflictRecord" }
+        },
         "notes": { "type": "string" }
       },
       "allOf": [

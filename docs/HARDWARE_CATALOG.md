@@ -33,8 +33,11 @@ Link vehicle configurations to candidate ECU/module hardware with explicit evide
 ## Rules
 
 - Model year or engine family alone never promotes a candidate to confirmed.
-- Conflicting evidence is recorded in `conflicts`, not silently resolved.
+- Conflicting evidence is recorded in structured `conflicts` records (attribute, competing claims with sources, open/resolved status), not silently resolved.
+- **Migration 1.0.0 → 2.0.0 (compatibility catalogs only; hardware profiles stay 1.0.0):** move a former `applicability` production-range fact to `applicability.production`, and convert each free-text `conflicts` string into a `ConflictRecord` with an `attribute`, at least two sourced `claims`, and a `status`. Set `schemaVersion` to `"2.0.0"`.
 - A `candidate` entry names a *possible* hardware profile; diagnostics must treat it as a hypothesis requiring verification, not a fact.
+- `corroborated` requires evidence from at least two distinct sources.
+- Fitment evaluation — structured applicability constraints, three-valued matching, explainable outcomes, and ambiguity preservation — is performed by the [Hardware Compatibility Resolver](HARDWARE_RESOLVER.md).
 
 ## Validation
 
