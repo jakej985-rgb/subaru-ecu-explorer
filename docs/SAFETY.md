@@ -1,5 +1,7 @@
 # Safety and Bench/Vehicle Procedures
 
+See `SAFETY_CONTROLS.md` for the enforced operation gate (allowlists, read-only capability checks, health gates, rate limits).
+
 ## Read-only development policy
 
 Initial releases are limited to identification, reading DTCs, reading supported measurements, and recording diagnostic sessions.

@@ -219,13 +219,17 @@ func (t *transport) wait(events int16) (int16, error) {
 		if closed {
 			return 0, adapter.ErrClosed
 		}
-		ms := -1 // no deadline: block until ready or woken by Close
+		// Poll in bounded slices so a SetDeadline issued during a blocked
+		// wait (e.g. context cancellation) is observed promptly.
+		ms := deadlinePollSlice
 		if !d.IsZero() {
 			remaining := time.Until(d)
 			if remaining <= 0 {
 				return 0, adapter.ErrTimeout
 			}
-			ms = int(remaining / time.Millisecond)
+			if r := int(remaining / time.Millisecond); r < ms {
+				ms = r
+			}
 			if ms < 1 {
 				ms = 1
 			}
@@ -245,11 +249,15 @@ func (t *transport) wait(events int16) (int16, error) {
 			return 0, adapter.ErrClosed
 		}
 		if n == 0 {
-			return 0, adapter.ErrTimeout
+			continue // slice elapsed; re-read deadline and closed state
 		}
 		return fds[0].Revents, nil
 	}
 }
+
+// deadlinePollSlice is the maximum poll(2) wait in milliseconds before
+// wait re-reads the deadline.
+const deadlinePollSlice = 50
 
 func (t *transport) Read(p []byte) (int, error) {
 	if len(p) == 0 {
