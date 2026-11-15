@@ -87,10 +87,14 @@ connection. No claim is made that this design covers every SSM mode.
   5 V pin and the MC33290 VDD. The Mega's VIN pin is not used for vehicle
   power (VIN expects 7–12 V; the regulated 5 V rail is cleaner).
 - Feeding the 5 V pin does **not** disconnect the Mega R3's USB VBUS
-  path. Before the external 5 V rail and the host USB are connected at
-  the same time, the schematic review must confirm they are isolated, for
-  example with a USB cable that has VBUS cut or a diode/ideal-diode on the
-  external rail. No backfeed into the host or the buck is allowed.
+  path: with VIN unused, the on-board USB power MOSFET stays on and
+  conducts in both directions. A diode on the external rail only blocks
+  USB→buck current; it does **not** prevent buck→host backfeed. Before
+  the external 5 V rail and host USB are connected simultaneously, the
+  schematic review must confirm isolation on the **USB branch** — e.g. a
+  USB cable/adapter with VBUS disconnected, or reverse-current protection
+  (ideal diode / load switch) between host VBUS and the board 5 V net.
+  No backfeed into the host or the buck is allowed.
 - All grounds meet at a single star point beside the protection stage;
   no ground-loop paths through signal wiring.
 
