@@ -48,7 +48,7 @@ func TestFixtureHello(t *testing.T) {
 	if h.FirmwareVersion != "0.1.0" || h.Board != "mega2560" || h.ProtocolVersion != 1 {
 		t.Fatalf("unexpected hello %+v", h)
 	}
-	if h.Capabilities != CapPeriodicSamples|CapSelfTest {
+	if h.Capabilities != CapSelfTest {
 		t.Fatalf("unexpected caps 0x%x", h.Capabilities)
 	}
 }
@@ -71,6 +71,9 @@ func TestFixtureStatus(t *testing.T) {
 	if f.Payload[0] != 0x01 {
 		t.Fatalf("unexpected status state 0x%02x", f.Payload[0])
 	}
+	if int(f.Payload[1]) != len(f.Payload)-2 {
+		t.Fatalf("status detail_len %d, actual %d", f.Payload[1], len(f.Payload)-2)
+	}
 }
 
 func TestFixtureDataBatch(t *testing.T) {
@@ -90,6 +93,9 @@ func TestFixtureError(t *testing.T) {
 	}
 	if f.Payload[0] != 0x10 {
 		t.Fatalf("unexpected error code 0x%02x", f.Payload[0])
+	}
+	if int(f.Payload[1]) != len(f.Payload)-2 {
+		t.Fatalf("error detail_len %d, actual %d", f.Payload[1], len(f.Payload)-2)
 	}
 }
 

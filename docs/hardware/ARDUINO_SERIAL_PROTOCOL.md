@@ -39,8 +39,8 @@ HELLO/CAPABILITY payload: `protoVer u16 | caps u32 | fwLen u8 |
 fwVersion[fwLen] | boardLen u8 | board[boardLen]` (strings ≤32 B).
 
 Capability bits: `CAP_PERIODIC_SAMPLES` (1<<0), `CAP_EVENT_SAMPLES`
-(1<<1), `CAP_SELF_TEST` (1<<2). v0.1 firmware advertises
-PERIODIC_SAMPLES + SELF_TEST; no vehicle-I/O capability bits exist.
+(1<<1), `CAP_SELF_TEST` (1<<2). v0.1 firmware advertises SELF_TEST
+only (no sample producer yet); no vehicle-I/O capability bits exist.
 
 ## Status states & error codes
 

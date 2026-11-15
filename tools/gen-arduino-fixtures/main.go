@@ -39,7 +39,7 @@ func main() {
 		FirmwareVersion: "0.1.0",
 		Board:           "mega2560",
 		ProtocolVersion: 1,
-		Capabilities:    arduino.CapPeriodicSamples | arduino.CapSelfTest,
+		Capabilities:    arduino.CapSelfTest,
 	}).EncodeHello()
 	if err != nil {
 		panic(err)
@@ -53,7 +53,7 @@ func main() {
 
 	write("status.hex", mustFrame(arduino.Frame{
 		Type: arduino.TypeStatus, Seq: 2,
-		Payload: append([]byte{0x01, 0x0D}, []byte("acquisition ready")...),
+		Payload: append([]byte{0x01, 0x11}, []byte("acquisition ready")...),
 	}))
 
 	write("data-batch.hex", mustFrame(arduino.Frame{
@@ -63,7 +63,7 @@ func main() {
 
 	write("error.hex", mustFrame(arduino.Frame{
 		Type: arduino.TypeError, Seq: 4,
-		Payload: append([]byte{0x10, 0x1A}, []byte("op rejected by allowlist")...),
+		Payload: append([]byte{0x10, 0x18}, []byte("op rejected by allowlist")...),
 	}))
 
 	write("capability.hex", mustFrame(arduino.Frame{

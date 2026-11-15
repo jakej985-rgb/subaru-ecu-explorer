@@ -59,29 +59,36 @@ static bool queueRawFrame(uint8_t type, uint16_t seq, const uint8_t *payload, ui
     return true;
 }
 
+// Drain as much as the HW serial ring accepts (≤63 B on AVR) and keep the
+// unsent suffix; never wait for the whole queue to fit.
 static void flushTx() {
-    if (txLen && Serial.availableForWrite() >= (int)txLen) {
-        Serial.write(txBuf, txLen);
-        txLen = 0;
-    }
+    if (!txLen) return;
+    int avail = Serial.availableForWrite();
+    if (avail <= 0) return;
+    uint16_t n = (uint16_t)avail < txLen ? (uint16_t)avail : txLen;
+    Serial.write(txBuf, n);
+    memmove(txBuf, txBuf + n, txLen - n);
+    txLen -= n;
 }
 
 // ---------- frame builders ----------
 static uint16_t seqCounter = 0;
 
-static void sendHello() {
+static void sendIdentity(uint8_t frameType) {
     uint8_t p[2 + 2 + 4 + 1 + HELLO_MAX_STRING + 1 + HELLO_MAX_STRING];
     uint16_t o = 0;
     uint16_t pv = PROTO_VERSION;
     p[o++] = pv >> 8; p[o++] = pv & 0xFF;
-    uint32_t caps = CAP_PERIODIC_SAMPLES | CAP_SELF_TEST; // no vehicle TX caps
+    uint32_t caps = CAP_SELF_TEST; // no sample producer yet; no vehicle TX caps
     p[o++] = caps >> 24; p[o++] = caps >> 16; p[o++] = caps >> 8; p[o++] = caps & 0xFF;
     uint8_t fl = strlen(FW_VERSION);
     p[o++] = fl; memcpy(p + o, FW_VERSION, fl); o += fl;
     uint8_t bl = strlen(BOARD_NAME);
     p[o++] = bl; memcpy(p + o, BOARD_NAME, bl); o += bl;
-    queueRawFrame(FRM_HELLO, seqCounter++, p, o);
+    queueRawFrame(frameType, seqCounter++, p, o);
 }
+
+static void sendHello() { sendIdentity(FRM_HELLO); }
 
 static void sendStatus(uint8_t state, const char *detail) {
     uint8_t p[1 + 1 + ST_MAX_DETAIL];
@@ -162,7 +169,8 @@ static void onFrame(const uint8_t *frame, uint16_t len) {
                 // Read-only self-test: report TX queue headroom and parser
                 // health. No vehicle I/O.
                 uint8_t r[4];
-                r[0] = (uint8_t)(sizeof(txBuf) - txLen);
+                uint16_t room = sizeof(txBuf) - txLen;
+                r[0] = room > 255 ? 255 : (uint8_t)room; // saturate
                 r[1] = rxCrcErrors >> 8; r[2] = rxCrcErrors & 0xFF;
                 r[3] = fwState;
                 queueRawFrame(FRM_DATA, seqCounter++, r, sizeof(r));
@@ -172,7 +180,7 @@ static void onFrame(const uint8_t *frame, uint16_t len) {
         case FRM_CAPABILITY:
             // Host requests capabilities: reply with a capability frame
             // carrying the same payload layout as hello.
-            sendHello(); // hello payload already encodes caps; reuse type
+            sendIdentity(FRM_CAPABILITY);
             break;
         default:
             // Firmware-originated types from the host are ignored.
@@ -188,7 +196,7 @@ static void rxFeed(uint8_t b) {
             break;
         case RX_MAGIC1:
             if (b == PROTO_MAGIC1) { rxFrame[1] = b; rxLen = 2; rxState = RX_HEADER; }
-            else rxReset();
+            else if (b != PROTO_MAGIC0) rxReset();
             break;
         case RX_HEADER:
             rxFrame[rxLen++] = b;
@@ -198,7 +206,7 @@ static void rxFeed(uint8_t b) {
                     rxCrcErrors++;
                     rxReset();
                 } else {
-                    rxState = RX_PAYLOAD;
+                    rxState = rxPayloadLen ? RX_PAYLOAD : RX_CRC_HI;
                 }
             }
             break;
