@@ -213,6 +213,19 @@ func TestManagerDiscoverErrorPropagation(t *testing.T) {
 	}
 }
 
+func TestManagerRejectsUnknownHardwareSafely(t *testing.T) {
+	// With only an ELM327 driver registered, an SSM candidate must be
+	// rejected as unsupported - the paths are never interchangeable.
+	m := adapter.NewManager()
+	m.RegisterDriver(fake.NewDriver(adapter.KindELM327, cand(adapter.KindELM327, "elm-a")))
+	if _, err := m.Connect(context.Background(), cand(adapter.KindSubaruSSM, "openport-1")); !errors.Is(err, adapter.ErrUnsupported) {
+		t.Fatalf("expected ErrUnsupported for unregistered SSM kind, got %v", err)
+	}
+	if len(m.ConnectedIDs()) != 0 {
+		t.Fatal("rejected connect must not leave a session")
+	}
+}
+
 func TestManagerConnectCancellation(t *testing.T) {
 	m := adapter.NewManager()
 	d := fake.NewDriver(adapter.KindELM327, cand(adapter.KindELM327, "elm-a"))

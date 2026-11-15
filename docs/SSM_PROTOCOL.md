@@ -1,5 +1,7 @@
 # Subaru Select Monitor (SSM) Research
 
+See `SSM_INTERFACE.md` for the hardware interface evaluation (candidates, electrical requirements, evidence status).
+
 ## Purpose
 
 Document Subaru-specific diagnostic communication independently from generic OBD-II. FreeSSM is the initial open-source reference implementation.
