@@ -1,0 +1,39 @@
+Net,Ref,Pin,Other,Notes
+VBAT_RAW,J1,1,DLC16,+12V unswitched via OBD tap; fused downstream
+VBAT_FUSED,F1,1,J1.1,2A blade fuse
+VBAT_FUSED,F1,2,D1.2,reverse-polarity stage input
+VBAT_REV,D1,2,TVS1.1,after reverse-polarity (FET or SS34)
+VBAT_CLAMPED,TVS1,1,D1.2,TVS to GND_STAR; SMBJ18A-class
+VBAT_CLAMPED,C1,1,D1.2,bulk 100uF
+GND_STAR,C1,2,GND_BUS,star ground point
+VBAT_BUCK_IN,D2,1,TVS1.1,buck regulator input
+GND_BUCK_IN,D2,2,GND_BUS,
+VCC5,D2,3,M1.5V,GND2,regulated 5V rail
+VCC5,C2,1,D2.3,100uF + 100nF decoupling
+GND_BUS,C2,2,GND_STAR,
+KLINE_RAW,J2,1,DLC7,K-line via OBD tap; PTC fused
+KLINE_FUSED,F2,1,J2.1,500mA PTC
+KLINE_CLAMPED,TVS2,1,F2.1,signal TVS to GND_STAR; VRWM>=16V
+KLINE_BUS,R1,1,TVS2.1,series R 100-1000R to transceiver
+KLINE_BUS,U1,5,MC33290 K pin,12V bus side
+KLINE_LOGIC_TX,R2,1,U1.4,MC33290 RXD from MCU
+KLINE_LOGIC_TX,R2,2,M1.18,Mega pin 18 TX1 via 1k series
+KLINE_LOGIC_RX,R3,1,U1.3,MC33290 TXD to MCU
+KLINE_LOGIC_RX,R3,2,M1.19,Mega pin 19 RX1 via 1k series
+KLINE_INH,U1,2,M1.22,Mega GPIO standby control; 10k pull-up TBD
+KLINE_STB,U1,6,GND_BUS,MC33290 standby pin per datasheet
+KLINE_VDD,U1,7,VCC5,5V logic supply
+KLINE_VBAT,U1,8,VBAT_CLAMPED,battery sense pin per datasheet
+LLINE_RAW,J3,1,DLC15,L-line via OBD tap; UNPOPULATED v0.1
+SSM1_RX,J4,1,DLC12,SSM1 candidate pin - UNVERIFIED assignment
+SSM1_TX,J4,2,DLC13,SSM1 candidate pin - UNVERIFIED assignment
+SSM1_GND,J4,3,GND_BUS,
+SSM1_RX,R4,1,J4.1,500mA PTC + TVS + series R to UART2
+SSM1_TX,R5,1,J4.2,same protection
+UART2_RX,M1,17,J4.1-side,to MCU UART2 RX2 (pin 17)
+UART2_TX,M1,16,J4.2-side,to MCU UART2 TX2 (pin 16)
+USB_D+,M1,USB+,host,ATmega16U2 native USB to Go service
+USB_D-,M1,USB-,host,
+ICSP,M1,ICSP,2x3 header,firmware debug/recovery
+CAN_H,J5,1,DLC6,footprint only - unpopulated
+CAN_L,J5,2,DLC14,footprint only - unpopulated
