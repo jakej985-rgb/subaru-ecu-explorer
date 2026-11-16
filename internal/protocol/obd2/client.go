@@ -2,8 +2,10 @@ package obd2
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jakej985-rgb/subaru-ecu-explorer/internal/protocol"
@@ -56,12 +58,16 @@ func (c *Client) Query(ctx context.Context, mode, pid byte) (Measurement, error)
 	}
 	// Find the first data answer; ELM error statuses map to typed errors.
 	var payload []byte
+	var lines []string
 	for _, m := range resp.Answers {
 		if e := elm327.ErrorOf(m); e != nil {
 			return Measurement{}, mapElmError(e)
 		}
 		if elm327.IsData(m) && len(m.Payload) > 0 {
 			payload = m.Payload
+			if _, hdr := m.Metadata["canIDs"]; !hdr {
+				lines, _ = m.Metadata["lines"].([]string)
+			}
 			break
 		}
 	}
@@ -69,13 +75,17 @@ func (c *Client) Query(ctx context.Context, mode, pid byte) (Measurement, error)
 		return Measurement{}, ErrNoData
 	}
 	// Strip the mode/PID response header: byte0 = 0x40|mode, byte1 = pid.
-	// Mode 03 has no PID byte.
+	// Mode 03 has no PID byte, and every response line repeats the 0x43
+	// header, so strip it per line before joining DTC pairs.
 	data := payload
 	if mode == 0x03 {
-		if len(data) < 1 || data[0] != 0x43 {
-			return Measurement{}, fmt.Errorf("%w: unexpected mode03 header % x", ErrMalformedData, data)
+		if len(lines) == 0 {
+			lines = []string{fmt.Sprintf("%X", payload)}
 		}
-		data = data[1:]
+		data, err = stripMode03Lines(lines)
+		if err != nil {
+			return Measurement{}, err
+		}
 	} else {
 		if len(data) < 2 || data[0] != 0x40|mode || data[1] != pid {
 			return Measurement{}, fmt.Errorf("%w: response header % x does not match mode 0x%02X PID 0x%02X",
@@ -91,6 +101,23 @@ func (c *Client) Query(ctx context.Context, mode, pid byte) (Measurement, error)
 		data = data[def.extraSkip:]
 	}
 	return Decode(mode, pid, data)
+}
+
+// stripMode03Lines validates and removes the 0x43 header from each ELM
+// data line, concatenating the remaining DTC bytes.
+func stripMode03Lines(lines []string) ([]byte, error) {
+	var out []byte
+	for _, ln := range lines {
+		bs, err := hex.DecodeString(strings.Join(strings.Fields(ln), ""))
+		if err != nil {
+			return nil, fmt.Errorf("%w: mode03 line %q", ErrMalformedData, ln)
+		}
+		if len(bs) < 1 || bs[0] != 0x43 {
+			return nil, fmt.Errorf("%w: unexpected mode03 header % x", ErrMalformedData, bs)
+		}
+		out = append(out, bs[1:]...)
+	}
+	return out, nil
 }
 
 // mapElmError converts an elm327 ErrorOf result into an obd2-typed error.

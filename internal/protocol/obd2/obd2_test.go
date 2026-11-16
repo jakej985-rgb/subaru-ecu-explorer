@@ -168,6 +168,18 @@ func TestClientQueryDTCs(t *testing.T) {
 	}
 }
 
+func TestClientQueryDTCsMultiLine(t *testing.T) {
+	c := newClient(t, "43 01 33\r43 02 10\r>")
+	m, err := c.StoredDTCs(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dtcs := m.Value.([]obd2.DTC)
+	if len(dtcs) != 2 || dtcs[0].Code != "P0133" || dtcs[1].Code != "P0210" {
+		t.Fatalf("dtcs %#v", dtcs)
+	}
+}
+
 func TestClientNoData(t *testing.T) {
 	c := newClient(t, "NO DATA\r>")
 	_, err := c.RPM(context.Background())

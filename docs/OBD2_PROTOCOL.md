@@ -44,14 +44,15 @@ adapter-independent `protocol.Session`.
 ### Mode 0x03 — stored DTCs
 
 Repeating 2-byte DTCs decoded to `DTC{Code, Type, Confirmed, TestFailed}`.
-Mode 03 responses carry no PID byte; the `0x43` header is stripped.
+Mode 03 responses carry no PID byte; the `0x43` header is validated and
+stripped from every response line before DTC pairs are joined.
 
 ### Mode 0x09 — vehicle information
 
 | PID | Name | Decode |
 |---|---|---|
 | 0x02 | vin | 17-byte ASCII (one count byte skipped after header) |
-| 0x06 | calibration-id | ASCII |
+| 0x04 | calibration-id | ASCII |
 | 0x0A | ecu-name | ASCII |
 
 Mode 09 responses carry a one-byte item count between the mode/PID header
