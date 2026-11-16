@@ -198,6 +198,78 @@ func TestMarshalFormats(t *testing.T) {
 	}
 }
 
+func TestSpacesOffData(t *testing.T) {
+	codec := elm327.New()
+	r := exchange(t, codec, elm327.Mode(0x01, 0x0C), []byte("410C1AF8\r>"))
+	m := r.Answers[0]
+	if elm327.KindOf(m) != "data" || string(m.Payload) != string([]byte{0x41, 0x0C, 0x1A, 0xF8}) {
+		t.Fatalf("kind %q payload %x", elm327.KindOf(m), m.Payload)
+	}
+}
+
+func TestHeadersSpacesOff(t *testing.T) {
+	codec := elm327.New()
+	codec.Headers = true
+	r := exchange(t, codec, elm327.Mode(0x01, 0x0C), []byte("7E804410C1AF8\r>"))
+	m := r.Answers[0]
+	if elm327.KindOf(m) != "data" || string(m.Payload) != string([]byte{0x41, 0x0C, 0x1A, 0xF8}) {
+		t.Fatalf("kind %q payload %x", elm327.KindOf(m), m.Payload)
+	}
+}
+
+func TestHeadersModeBanner(t *testing.T) {
+	codec := elm327.New()
+	codec.Headers = true
+	r := exchange(t, codec, elm327.AT("I"), []byte("ELM327 v1.5\r>"))
+	if k := elm327.KindOf(r.Answers[0]); k != "banner" {
+		t.Fatalf("kind %q", k)
+	}
+}
+
+func TestHeadersBadCountMalformed(t *testing.T) {
+	codec := elm327.New()
+	codec.Headers = true
+	r := exchange(t, codec, elm327.Mode(0x01, 0x0C), []byte("7E8 ZZ 41 0C 1A F8\r>"))
+	m := r.Answers[0]
+	if elm327.KindOf(m) != "malformed" {
+		t.Fatalf("kind %q", elm327.KindOf(m))
+	}
+	if !errors.Is(elm327.ErrorOf(m), protocol.ErrMalformed) {
+		t.Fatalf("error %v", elm327.ErrorOf(m))
+	}
+}
+
+func TestMarshalModeEqualsPID(t *testing.T) {
+	codec := elm327.New()
+	for _, req := range []protocol.Request{
+		elm327.Mode(0x01, 0x01),
+		{Service: 0x01, Payload: []byte{0x01}},
+	} {
+		b, err := codec.Marshal(req)
+		if err != nil || string(b) != "0101\r" {
+			t.Fatalf("marshal %q %v", b, err)
+		}
+	}
+}
+
+func TestIdentifyErrorPropagates(t *testing.T) {
+	codec := elm327.New()
+	tr := fake.NewTransport()
+	s := protocol.NewSession(codec, tr, protocol.Options{
+		ResponseTimeout: 2 * time.Second, IdleTimeout: 20 * time.Millisecond,
+	})
+	resps := make([][]byte, 0, len(elm327.InitSteps)+1)
+	resps = append(resps, []byte("ELM327 v1.5\r>"))
+	for range elm327.InitSteps[1:] {
+		resps = append(resps, []byte("OK\r>"))
+	}
+	resps = append(resps, []byte("?\r>"))
+	feedOnWrite(tr, resps...)
+	if _, err := elm327.Identify(context.Background(), s, false); err == nil {
+		t.Fatal("expected ATI error")
+	}
+}
+
 func TestUnmarshalIncomplete(t *testing.T) {
 	codec := elm327.New()
 	_, _, err := codec.Unmarshal([]byte("41 0C 1A"))

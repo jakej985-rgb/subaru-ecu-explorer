@@ -34,8 +34,22 @@ func Initialize(ctx context.Context, s *protocol.Session, onMsg func(protocol.Me
 		if e := lastError(resp); e != nil {
 			return fmt.Errorf("elm327 init %s: %w", step, e)
 		}
+		// ATZ answers with a banner; every other step must say OK.
+		if step != "Z" && !hasKind(resp, "ok") {
+			return fmt.Errorf("elm327 init %s: %w: no OK acknowledgement", step, protocol.ErrMalformed)
+		}
 	}
 	return nil
+}
+
+// hasKind reports whether any answer has the given classification.
+func hasKind(resp protocol.Response, kind string) bool {
+	for _, m := range resp.Answers {
+		if KindOf(m) == kind {
+			return true
+		}
+	}
+	return false
 }
 
 // AdapterInfo is the detected ELM327 identity and capabilities.
@@ -65,6 +79,9 @@ func Identify(ctx context.Context, s *protocol.Session, queryProtocol bool) (*Ad
 	if err != nil {
 		return nil, fmt.Errorf("elm327 ATI: %w", err)
 	}
+	if e := lastError(resp); e != nil {
+		return nil, fmt.Errorf("elm327 ATI: %w", e)
+	}
 	for _, m := range resp.Answers {
 		if KindOf(m) == "banner" {
 			info.RawVersion = string(m.Payload)
@@ -89,7 +106,8 @@ func Identify(ctx context.Context, s *protocol.Session, queryProtocol bool) (*Ad
 		pr, err := s.Transact(ctx, AT("DP"))
 		if err == nil {
 			for _, m := range pr.Answers {
-				if len(m.Payload) > 0 {
+				// Never record an ELM error/malformed payload as a protocol.
+				if len(m.Payload) > 0 && ErrorOf(m) == nil {
 					info.Protocols = string(m.Payload)
 				}
 			}

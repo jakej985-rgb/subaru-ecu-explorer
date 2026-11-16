@@ -9,6 +9,7 @@
 package elm327
 
 import (
+	"encoding/hex"
 	"fmt"
 	"strconv"
 	"strings"
@@ -78,9 +79,9 @@ func AT(cmd string) protocol.Request {
 }
 
 // Mode builds an OBD mode request: mode 0x01 PID 0x0C -> "010C\r".
+// Payload holds only the parameters; Marshal always prepends the mode.
 func Mode(mode byte, params ...byte) protocol.Request {
-	p := append([]byte{mode}, params...)
-	return protocol.Request{Service: mode, Payload: p}
+	return protocol.Request{Service: mode, Payload: append([]byte(nil), params...)}
 }
 
 // Marshal implements protocol.Codec: AT commands become "AT<cmd>\r";
@@ -98,12 +99,9 @@ func (c *Codec) Marshal(req protocol.Request) ([]byte, error) {
 		// this service exists for header-byte requests only.
 		return nil, fmt.Errorf("%w: SvcHeaders is not a request service", protocol.ErrUnsupported)
 	default:
-		// OBD mode request: Service is the mode, Payload[0] must equal it
-		// for Mode()-built requests; bare params are also accepted.
-		body := req.Payload
-		if len(body) == 0 || body[0] != req.Service {
-			body = append([]byte{req.Service}, body...)
-		}
+		// OBD mode request: Service is the mode, Payload is the
+		// parameters only (unambiguous even when PID == mode).
+		body := append([]byte{req.Service}, req.Payload...)
 		var b strings.Builder
 		for _, by := range body {
 			fmt.Fprintf(&b, "%02X", by)
@@ -221,6 +219,12 @@ func parseBlock(block, lastCmd string, hdrMode bool) protocol.Message {
 	var data []byte
 	var kept []string
 	var headers []string
+	malformed := func(ln string) protocol.Message {
+		msg.Metadata["kind"] = "malformed"
+		msg.Metadata["badLine"] = ln
+		msg.Payload = []byte(strings.Join(body, " "))
+		return msg
+	}
 	for _, ln := range body {
 		if ln == "..." {
 			continue
@@ -229,25 +233,28 @@ func parseBlock(block, lastCmd string, hdrMode bool) protocol.Message {
 		if len(fields) == 0 {
 			continue
 		}
-		line := ln
+		// Spaces may be on (ATS1) or off (ATS0); work on the compact form.
+		compact := strings.Join(fields, "")
 		if hdrMode {
-			// "<can-id> <count> <data...>": strip the two header fields
-			// after validating the count matches the data that follows.
-			if len(fields) < 3 {
-				msg.Metadata["kind"] = "malformed"
-				msg.Metadata["badLine"] = ln
-				msg.Payload = []byte(strings.Join(body, " "))
-				return msg
+			// "<can-id> <count> <data...>". Non-hex lines (banners, ATDP
+			// text) are not header lines and fall through to banner below.
+			if id, bs, ok, err := splitHeader(ln); ok {
+				if err != nil {
+					return malformed(ln)
+				}
+				headers = append(headers, id)
+				kept = append(kept, ln)
+				data = append(data, bs...)
+				continue
 			}
-			n, err := strconv.ParseUint(fields[1], 16, 8)
-			if err != nil || int(n) != len(fields)-2 {
-				msg.Metadata["kind"] = "malformed"
-				msg.Metadata["badLine"] = ln
-				msg.Payload = []byte(strings.Join(body, " "))
-				return msg
+		} else if isHex(compact) {
+			bs, err := decodeHex(compact)
+			if err != nil {
+				return malformed(ln)
 			}
-			headers = append(headers, fields[0])
-			line = strings.Join(fields[2:], " ")
+			kept = append(kept, ln)
+			data = append(data, bs...)
+			continue
 		}
 		// Distinguish attempted-hex data lines from banner text: a line
 		// whose fields are all 2 chars is a malformed data attempt; any
@@ -259,27 +266,13 @@ func parseBlock(block, lastCmd string, hdrMode bool) protocol.Message {
 				break
 			}
 		}
-		if !looksHexLine(line) {
-			if allPairs {
-				msg.Metadata["kind"] = "malformed"
-				msg.Metadata["badLine"] = ln
-				msg.Payload = []byte(strings.Join(body, " "))
-				return msg
-			}
-			msg.Metadata["kind"] = "banner"
-			msg.Metadata["text"] = strings.Join(body, " | ")
-			msg.Payload = []byte(msg.Metadata["text"].(string))
-			return msg
+		if allPairs {
+			return malformed(ln)
 		}
-		kept = append(kept, line)
-		bs, err := decodeHexLine(line)
-		if err != nil {
-			msg.Metadata["kind"] = "malformed"
-			msg.Metadata["badLine"] = ln
-			msg.Payload = []byte(strings.Join(body, " "))
-			return msg
-		}
-		data = append(data, bs...)
+		msg.Metadata["kind"] = "banner"
+		msg.Metadata["text"] = strings.Join(body, " | ")
+		msg.Payload = []byte(msg.Metadata["text"].(string))
+		return msg
 	}
 	if len(data) == 0 {
 		msg.Metadata["kind"] = "banner"
@@ -296,41 +289,69 @@ func parseBlock(block, lastCmd string, hdrMode bool) protocol.Message {
 	return msg
 }
 
-// looksHexLine reports whether a line consists solely of hex byte pairs
-// (spaces allowed between pairs).
-func looksHexLine(s string) bool {
-	fields := strings.Fields(s)
-	if len(fields) == 0 {
+// isHex reports whether s is non-empty and consists only of hex digits.
+func isHex(s string) bool {
+	if s == "" {
 		return false
 	}
-	for _, f := range fields {
-		if len(f) != 2 {
+	for _, r := range s {
+		if !(r >= '0' && r <= '9' || r >= 'A' && r <= 'F' || r >= 'a' && r <= 'f') {
 			return false
-		}
-		for _, r := range f {
-			if !(r >= '0' && r <= '9' || r >= 'A' && r <= 'F' || r >= 'a' && r <= 'f') {
-				return false
-			}
 		}
 	}
 	return true
 }
 
-// decodeHexLine decodes a line of space-separated hex byte pairs.
-func decodeHexLine(s string) ([]byte, error) {
-	fields := strings.Fields(s)
-	out := make([]byte, 0, len(fields))
-	for _, f := range fields {
-		if len(f) != 2 {
-			return nil, fmt.Errorf("bad hex field %q", f)
-		}
-		var v byte
-		if _, err := fmt.Sscanf(f, "%02x", &v); err != nil {
-			return nil, fmt.Errorf("bad hex byte %q", f)
-		}
-		out = append(out, v)
+// decodeHex decodes a compact (no spaces) even-length hex string.
+func decodeHex(s string) ([]byte, error) {
+	if len(s)%2 != 0 {
+		return nil, fmt.Errorf("odd-length hex %q", s)
 	}
-	return out, nil
+	return hex.DecodeString(s)
+}
+
+// splitHeader parses a header-mode line "<can-id> <count> <data...>",
+// with or without spaces. ok=false means the line is not hex at all (e.g.
+// banner text); ok=true with err means a hex line that fails validation.
+func splitHeader(ln string) (id string, data []byte, ok bool, err error) {
+	fields := strings.Fields(ln)
+	s := strings.Join(fields, "")
+	// Spaced output: a leading 3/8-hex-char CAN ID marks a header line,
+	// so any later non-hex or count error is malformed, not banner text.
+	if len(fields) >= 2 && (len(fields[0]) == 3 || len(fields[0]) == 8) && isHex(fields[0]) {
+		if !isHex(s) {
+			return "", nil, true, fmt.Errorf("non-hex header line %q", ln)
+		}
+		id, data, err = headerAt(s, len(fields[0]))
+		return id, data, true, err
+	}
+	if !isHex(s) {
+		return "", nil, false, nil
+	}
+	// Spaces off: try 11-bit (3 hex) then 29-bit (8 hex) IDs.
+	for _, idLen := range []int{3, 8} {
+		if id, data, err = headerAt(s, idLen); err == nil {
+			return id, data, true, nil
+		}
+	}
+	return "", nil, true, fmt.Errorf("header count mismatch in %q", ln)
+}
+
+// headerAt splits compact hex s into an idLen-char CAN ID, a count byte,
+// and data, validating that count equals the data length.
+func headerAt(s string, idLen int) (string, []byte, error) {
+	if len(s) < idLen+2 {
+		return "", nil, fmt.Errorf("short header line %q", s)
+	}
+	n, err := strconv.ParseUint(s[idLen:idLen+2], 16, 8)
+	if err != nil {
+		return "", nil, err
+	}
+	d, err := decodeHex(s[idLen+2:])
+	if err != nil || int(n) != len(d) {
+		return "", nil, fmt.Errorf("header count mismatch in %q", s)
+	}
+	return s[:idLen], d, nil
 }
 
 // KindOf extracts the classification metadata from a parsed message.
