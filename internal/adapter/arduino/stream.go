@@ -43,8 +43,17 @@ func (r *Reader) ReadFrame(timeout time.Duration) (Frame, error) {
 // the reader alive forever. Expiry returns adapter.ErrTimeout.
 func (r *Reader) ReadFrameUntil(timeout time.Duration, until time.Time) (Frame, error) {
 	tmp := make([]byte, 256)
+	// One fixed deadline for the whole call: the earlier of now+timeout
+	// and until. Never renewed inside the loop, so noise cannot extend it.
+	var dl time.Time
 	if timeout > 0 {
-		_ = r.tr.SetDeadline(time.Now().Add(timeout))
+		dl = time.Now().Add(timeout)
+	}
+	if !until.IsZero() && (dl.IsZero() || until.Before(dl)) {
+		dl = until
+	}
+	if !dl.IsZero() {
+		_ = r.tr.SetDeadline(dl)
 		defer func() { _ = r.tr.SetDeadline(time.Time{}) }()
 	}
 	for {
@@ -74,20 +83,8 @@ func (r *Reader) ReadFrameUntil(timeout time.Duration, until time.Time) (Frame, 
 				continue
 			}
 		}
-		var dl time.Time
-		if timeout > 0 {
-			dl = time.Now().Add(timeout)
-		}
-		if !until.IsZero() {
-			if !time.Now().Before(until) {
-				return Frame{}, adapter.ErrTimeout
-			}
-			if dl.IsZero() || until.Before(dl) {
-				dl = until
-			}
-		}
-		if !dl.IsZero() {
-			_ = r.tr.SetDeadline(dl)
+		if !dl.IsZero() && !time.Now().Before(dl) {
+			return Frame{}, adapter.ErrTimeout
 		}
 		n, err := r.tr.Read(tmp)
 		if n > 0 {
