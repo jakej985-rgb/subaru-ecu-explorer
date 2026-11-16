@@ -31,6 +31,11 @@ fixture-tested.
 | `malformed` | undecodable hex or header-count mismatch |
 | `prompt`/`echo-only` | empty or echo-only blocks |
 
+`error` and `malformed` blocks are returned as normal answers, not as a
+`Transact` error, so the classification and raw text stay in the
+evidence stream. A successful `Transact` does not imply valid data:
+callers must check `ErrorOf` on each answer.
+
 In-band `SEARCHING...` and `BUS INIT...` lines are recorded in
 `statusLines` without corrupting data parsing; ISO-TP `...` continuation
 markers are skipped.
