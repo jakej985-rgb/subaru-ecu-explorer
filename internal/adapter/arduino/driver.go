@@ -143,8 +143,18 @@ func (s *Session) handshake(ctx context.Context, d *Driver) error {
 		deadline = cd
 	}
 	// Wake a blocked read on cancellation.
-	stop := context.AfterFunc(ctx, func() { _ = s.tr.SetDeadline(time.Now()) })
-	defer stop()
+	done := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		defer close(done)
+		_ = s.tr.SetDeadline(time.Now())
+	})
+	defer func() {
+		// If the callback already started, wait for it so it cannot
+		// overwrite the deadline Open clears after a successful handshake.
+		if !stop() {
+			<-done
+		}
+	}()
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
