@@ -226,6 +226,19 @@ func TestHeadersModeBanner(t *testing.T) {
 	}
 }
 
+func TestHeadersBadCountMalformed(t *testing.T) {
+	codec := elm327.New()
+	codec.Headers = true
+	r := exchange(t, codec, elm327.Mode(0x01, 0x0C), []byte("7E8 ZZ 41 0C 1A F8\r>"))
+	m := r.Answers[0]
+	if elm327.KindOf(m) != "malformed" {
+		t.Fatalf("kind %q", elm327.KindOf(m))
+	}
+	if !errors.Is(elm327.ErrorOf(m), protocol.ErrMalformed) {
+		t.Fatalf("error %v", elm327.ErrorOf(m))
+	}
+}
+
 func TestMarshalModeEqualsPID(t *testing.T) {
 	codec := elm327.New()
 	for _, req := range []protocol.Request{

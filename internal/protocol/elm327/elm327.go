@@ -316,13 +316,17 @@ func decodeHex(s string) ([]byte, error) {
 func splitHeader(ln string) (id string, data []byte, ok bool, err error) {
 	fields := strings.Fields(ln)
 	s := strings.Join(fields, "")
-	if !isHex(s) {
-		return "", nil, false, nil
-	}
-	// Spaced output tells us the ID width directly.
-	if len(fields) >= 2 && (len(fields[0]) == 3 || len(fields[0]) == 8) {
+	// Spaced output: a leading 3/8-hex-char CAN ID marks a header line,
+	// so any later non-hex or count error is malformed, not banner text.
+	if len(fields) >= 2 && (len(fields[0]) == 3 || len(fields[0]) == 8) && isHex(fields[0]) {
+		if !isHex(s) {
+			return "", nil, true, fmt.Errorf("non-hex header line %q", ln)
+		}
 		id, data, err = headerAt(s, len(fields[0]))
 		return id, data, true, err
+	}
+	if !isHex(s) {
+		return "", nil, false, nil
 	}
 	// Spaces off: try 11-bit (3 hex) then 29-bit (8 hex) IDs.
 	for _, idLen := range []int{3, 8} {
