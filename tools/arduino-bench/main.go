@@ -84,8 +84,28 @@ func (b *bench) roundTrip(want arduino.FrameType, payload []byte) (arduino.Frame
 		if f.Type == want {
 			return f, nil
 		}
+		b.observe(f)
 	}
 	return arduino.Frame{}, fmt.Errorf("no frame type 0x%02x within %s", byte(want), *timeout)
+}
+
+// observe logs non-heartbeat frames skipped while waiting, so the log
+// carries STATUS transitions and ERROR codes as evidence. ERR_VEHICLE_IO
+// is never expected on the bench and counts as a failure.
+func (b *bench) observe(f arduino.Frame) {
+	if f.Type == arduino.TypeHeartbeat {
+		return
+	}
+	stamp("OBSERVE type=0x%02x seq=%d payload=% x", byte(f.Type), f.Seq, f.Payload)
+	if f.Type == arduino.TypeError && len(f.Payload) > 0 && f.Payload[0] == arduino.ErrVehicleIO {
+		fail("vehicle-io", "unexpected ERR_VEHICLE_IO on bench")
+	}
+}
+
+// sameIdentity compares the full negotiated identity.
+func sameIdentity(a, b arduino.Hello) bool {
+	return a.FirmwareVersion == b.FirmwareVersion && a.Board == b.Board &&
+		a.ProtocolVersion == b.ProtocolVersion && a.Capabilities == b.Capabilities
 }
 
 // expectErrCode sends a DATA frame with op payload and returns the first
@@ -220,7 +240,9 @@ func main() {
 			}
 			if f.Type == arduino.TypeCapability {
 				hh, err := arduino.DecodeHello(f.Payload)
-				ok = err == nil && hh.FirmwareVersion == h.FirmwareVersion
+				ok = err == nil && sameIdentity(hh, h)
+			} else {
+				b.observe(f)
 			}
 		}
 		if !ok {
@@ -262,7 +284,7 @@ func main() {
 		}
 		b2 := openSession()
 		defer b2.s.Close()
-		if b2.s.Hello().FirmwareVersion != h.FirmwareVersion {
+		if !sameIdentity(b2.s.Hello(), h) {
 			fail("reconnect", "identity changed after reconnect")
 			return
 		}

@@ -178,7 +178,16 @@ func (s *Session) Frames() *Reader { return s.rd }
 // Hello returns the negotiated firmware identity.
 func (s *Session) Hello() Hello { return s.hello }
 
-func (s *Session) Read(p []byte) (int, error)    { return s.tr.Read(p) }
+// Read drains bytes buffered by the frame reader (e.g. handshake
+// read-ahead) before reading the transport, so the raw stream stays intact.
+func (s *Session) Read(p []byte) (int, error) {
+	if len(s.rd.buf) > 0 {
+		n := copy(p, s.rd.buf)
+		s.rd.buf = s.rd.buf[n:]
+		return n, nil
+	}
+	return s.tr.Read(p)
+}
 func (s *Session) Write(p []byte) (int, error)   { return s.tr.Write(p) }
 func (s *Session) SetDeadline(t time.Time) error { return s.tr.SetDeadline(t) }
 func (s *Session) Close() error                  { return s.tr.Close() }

@@ -30,17 +30,27 @@ func indexMagic(buf []byte) int {
 	return -1
 }
 
-// ReadFrame returns the next complete valid frame. timeout bounds each
-// underlying read (idle timeout, not a total deadline); transport errors
-// (ErrTimeout, ErrClosed, ErrPermission, ...) propagate unchanged.
+// ReadFrame returns the next complete valid frame. timeout is a total
+// deadline for this call (continuous noise cannot extend it); the transport
+// deadline is cleared on return so later writes are unaffected. Transport
+// errors (ErrTimeout, ErrClosed, ErrPermission, ...) propagate unchanged.
 func (r *Reader) ReadFrame(timeout time.Duration) (Frame, error) {
 	tmp := make([]byte, 256)
+	if timeout > 0 {
+		_ = r.tr.SetDeadline(time.Now().Add(timeout))
+		defer func() { _ = r.tr.SetDeadline(time.Time{}) }()
+	}
 	for {
 		// Resync: discard everything before the next magic prefix.
 		if idx := indexMagic(r.buf); idx > 0 {
 			r.buf = r.buf[idx:]
 		} else if idx < 0 {
-			r.buf = r.buf[:0]
+			// Keep a trailing magic[0]: magic may straddle a read boundary.
+			if len(r.buf) > 0 && r.buf[len(r.buf)-1] == magic[0] {
+				r.buf = r.buf[len(r.buf)-1:]
+			} else {
+				r.buf = r.buf[:0]
+			}
 		}
 		if len(r.buf) >= headerSize+crcSize {
 			f, n, err := DecodeFrame(r.buf)
@@ -55,9 +65,6 @@ func (r *Reader) ReadFrame(timeout time.Duration) (Frame, error) {
 				r.buf = r.buf[1:]
 				continue
 			}
-		}
-		if timeout > 0 {
-			_ = r.tr.SetDeadline(time.Now().Add(timeout))
 		}
 		n, err := r.tr.Read(tmp)
 		if err != nil {
