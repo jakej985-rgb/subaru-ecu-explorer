@@ -120,6 +120,12 @@ func (d *Driver) Open(ctx context.Context, c adapter.Candidate) (adapter.Session
 		_ = tr.Close()
 		return nil, err
 	}
+	// Clear the handshake's internal deadline so it doesn't leak into
+	// caller I/O.
+	if err := tr.SetDeadline(time.Time{}); err != nil {
+		_ = tr.Close()
+		return nil, err
+	}
 	return s, nil
 }
 
@@ -133,6 +139,22 @@ func (s *Session) handshake(ctx context.Context, d *Driver) error {
 		return err
 	}
 	deadline := time.Now().Add(d.handshakeTimeout)
+	if cd, ok := ctx.Deadline(); ok && cd.Before(deadline) {
+		deadline = cd
+	}
+	// Wake a blocked read on cancellation.
+	done := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		defer close(done)
+		_ = s.tr.SetDeadline(time.Now())
+	})
+	defer func() {
+		// If the callback already started, wait for it so it cannot
+		// overwrite the deadline Open clears after a successful handshake.
+		if !stop() {
+			<-done
+		}
+	}()
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -140,10 +162,10 @@ func (s *Session) handshake(ctx context.Context, d *Driver) error {
 		if time.Now().After(deadline) {
 			return fmt.Errorf("%w: no hello/capability frame within %s", adapter.ErrTimeout, d.handshakeTimeout)
 		}
-		f, err := s.rd.ReadFrame(d.perReadTimeout)
+		f, err := s.rd.ReadFrameUntil(d.perReadTimeout, deadline)
 		if err != nil {
 			if errors.Is(err, adapter.ErrTimeout) {
-				continue
+				continue // loop re-checks ctx and deadline
 			}
 			return err
 		}
@@ -178,16 +200,14 @@ func (s *Session) Frames() *Reader { return s.rd }
 // Hello returns the negotiated firmware identity.
 func (s *Session) Hello() Hello { return s.hello }
 
-// Read drains bytes buffered by the frame reader (e.g. handshake
-// read-ahead) before reading the transport, so the raw stream stays intact.
 func (s *Session) Read(p []byte) (int, error) {
-	if len(s.rd.buf) > 0 {
-		n := copy(p, s.rd.buf)
-		s.rd.buf = s.rd.buf[n:]
+	// Return bytes the frame reader read ahead before touching the port.
+	if n := s.rd.drain(p); n > 0 {
 		return n, nil
 	}
 	return s.tr.Read(p)
 }
+
 func (s *Session) Write(p []byte) (int, error)   { return s.tr.Write(p) }
 func (s *Session) SetDeadline(t time.Time) error { return s.tr.SetDeadline(t) }
 func (s *Session) Close() error                  { return s.tr.Close() }

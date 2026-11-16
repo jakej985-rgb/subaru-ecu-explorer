@@ -35,9 +35,25 @@ func indexMagic(buf []byte) int {
 // deadline is cleared on return so later writes are unaffected. Transport
 // errors (ErrTimeout, ErrClosed, ErrPermission, ...) propagate unchanged.
 func (r *Reader) ReadFrame(timeout time.Duration) (Frame, error) {
+	return r.ReadFrameUntil(timeout, time.Time{})
+}
+
+// ReadFrameUntil is ReadFrame with an absolute deadline: no underlying read
+// extends past until (zero means none), so continuous garbage cannot keep
+// the reader alive forever. Expiry returns adapter.ErrTimeout.
+func (r *Reader) ReadFrameUntil(timeout time.Duration, until time.Time) (Frame, error) {
 	tmp := make([]byte, 256)
+	// One fixed deadline for the whole call: the earlier of now+timeout
+	// and until. Never renewed inside the loop, so noise cannot extend it.
+	var dl time.Time
 	if timeout > 0 {
-		_ = r.tr.SetDeadline(time.Now().Add(timeout))
+		dl = time.Now().Add(timeout)
+	}
+	if !until.IsZero() && (dl.IsZero() || until.Before(dl)) {
+		dl = until
+	}
+	if !dl.IsZero() {
+		_ = r.tr.SetDeadline(dl)
 		defer func() { _ = r.tr.SetDeadline(time.Time{}) }()
 	}
 	for {
@@ -45,7 +61,8 @@ func (r *Reader) ReadFrame(timeout time.Duration) (Frame, error) {
 		if idx := indexMagic(r.buf); idx > 0 {
 			r.buf = r.buf[idx:]
 		} else if idx < 0 {
-			// Keep a trailing magic[0]: magic may straddle a read boundary.
+			// Keep a trailing magic[0]: the second magic byte may arrive
+			// in the next read.
 			if len(r.buf) > 0 && r.buf[len(r.buf)-1] == magic[0] {
 				r.buf = r.buf[len(r.buf)-1:]
 			} else {
@@ -66,12 +83,23 @@ func (r *Reader) ReadFrame(timeout time.Duration) (Frame, error) {
 				continue
 			}
 		}
+		if !dl.IsZero() && !time.Now().Before(dl) {
+			return Frame{}, adapter.ErrTimeout
+		}
 		n, err := r.tr.Read(tmp)
+		if n > 0 {
+			// io.Reader may return data alongside an error; keep it.
+			r.buf = append(r.buf, tmp[:n]...)
+		}
 		if err != nil {
 			return Frame{}, err
 		}
-		if n > 0 {
-			r.buf = append(r.buf, tmp[:n]...)
-		}
 	}
+}
+
+// drain copies buffered-but-unconsumed bytes into p.
+func (r *Reader) drain(p []byte) int {
+	n := copy(p, r.buf)
+	r.buf = r.buf[n:]
+	return n
 }
