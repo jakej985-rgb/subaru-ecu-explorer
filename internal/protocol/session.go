@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/jakej985-rgb/subaru-ecu-explorer/internal/adapter"
@@ -105,19 +106,46 @@ func (s *Session) Transact(ctx context.Context, req Request) (Response, error) {
 		responseTimeout = req.Timeout
 	}
 	maxBytes := s.opts.MaxBytes
-	if req.MaxBytes > 0 && req.MaxBytes < maxBytes {
+	if req.MaxBytes > 0 {
 		maxBytes = req.MaxBytes
 	}
 
+	if err := ctx.Err(); err != nil {
+		return resp, err
+	}
 	deadline := start.Add(responseTimeout)
-	if err := s.tr.SetDeadline(deadline); err != nil {
+	ioDeadline := deadline
+	if dl, ok := ctx.Deadline(); ok && dl.Before(ioDeadline) {
+		ioDeadline = dl
+	}
+	if err := s.tr.SetDeadline(ioDeadline); err != nil {
 		return resp, fmt.Errorf("protocol: set deadline: %w", err)
 	}
+	// Interrupt blocked I/O on cancellation. stop() waits out a running
+	// callback so it cannot clobber the next exchange's deadline.
+	done := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		defer close(done)
+		_ = s.tr.SetDeadline(time.Now())
+	})
+	defer func() {
+		if !stop() {
+			<-done
+		}
+	}()
 	if _, err := s.tr.Write(wire); err != nil {
-		resp.Status = StatusMalformed
-		resp.Error = err
 		resp.Elapsed = time.Since(start)
-		return resp, fmt.Errorf("protocol: write request: %w", err)
+		if cerr := ctx.Err(); cerr != nil {
+			return resp, cerr
+		}
+		if errors.Is(err, adapter.ErrTimeout) || isTimeout(err) {
+			resp.Status = StatusTimeout
+			resp.Error = fmt.Errorf("%w: write request: %v", ErrTimeout, err)
+			return resp, resp.Error
+		}
+		resp.Status = StatusMalformed
+		resp.Error = fmt.Errorf("protocol: write request: %w", err)
+		return resp, resp.Error
 	}
 	resp.Messages = append(resp.Messages, Message{
 		Direction: DirectionHostToEcu,
@@ -131,36 +159,52 @@ func (s *Session) Transact(ctx context.Context, req Request) (Response, error) {
 	tmp := make([]byte, 512)
 	var lastByteAt time.Time
 	idle := s.opts.IdleTimeout
+	total := 0 // cumulative bytes received this exchange
+
+	// keepResidue records undecoded bytes as evidence on failure paths.
+	keepResidue := func() {
+		if len(buf) > 0 {
+			resp.Messages = append(resp.Messages, Message{
+				Direction: DirectionEcuToHost,
+				Timestamp: time.Now(),
+				Raw:       append([]byte(nil), buf...),
+				Metadata:  map[string]any{"protocol.undecoded": true},
+			})
+		}
+	}
+	var readErr error
 
 	for {
 		if err := ctx.Err(); err != nil {
+			keepResidue()
 			resp.Elapsed = time.Since(start)
 			return resp, err
 		}
 		// Drain complete messages from the buffer first.
-		progress := false
 		for {
 			msg, consumed, err := s.codec.Unmarshal(buf)
 			if errors.Is(err, ErrIncomplete) {
 				break
 			}
 			if err != nil {
+				keepResidue()
 				resp.Status = StatusMalformed
 				resp.Error = err
 				resp.Elapsed = time.Since(start)
 				return resp, err
 			}
-			if msg.Direction == 0 {
+			if msg.Direction == DirectionUnspecified {
 				msg.Direction = DirectionEcuToHost
 			}
 			if msg.Timestamp.IsZero() {
 				msg.Timestamp = time.Now()
 			}
 			resp.Messages = append(resp.Messages, msg)
-			resp.Answers = append(resp.Answers, msg)
 			buf = buf[consumed:]
-			progress = true
-			lastByteAt = time.Now()
+			if msg.Direction != DirectionEcuToHost {
+				continue // e.g. adapter echo: evidence only, not an answer
+			}
+			resp.Answers = append(resp.Answers, msg)
 			if resp.Status == StatusEmpty {
 				resp.Status = StatusOK
 			}
@@ -169,17 +213,41 @@ func (s *Session) Transact(ctx context.Context, req Request) (Response, error) {
 				return resp, nil
 			}
 		}
+		if readErr != nil {
+			err := readErr
+			keepResidue()
+			resp.Elapsed = time.Since(start)
+			if cerr := ctx.Err(); cerr != nil {
+				return resp, cerr
+			}
+			if errors.Is(err, adapter.ErrTimeout) || isTimeout(err) {
+				if len(resp.Answers) > 0 {
+					return resp, nil
+				}
+				resp.Status = StatusTimeout
+				resp.Error = ErrTimeout
+				return resp, ErrTimeout
+			}
+			if len(resp.Answers) > 0 && errors.Is(err, io.EOF) {
+				return resp, nil
+			}
+			resp.Status = StatusMalformed
+			resp.Error = err
+			return resp, err
+		}
 		if len(resp.Answers) > 0 && time.Since(lastByteAt) >= idle {
 			resp.Elapsed = time.Since(start)
 			return resp, nil
 		}
-		if len(buf) >= maxBytes {
+		if total > maxBytes {
+			keepResidue()
 			resp.Status = StatusMalformed
 			resp.Error = fmt.Errorf("%w: received byte cap %d exceeded", ErrMalformed, maxBytes)
 			resp.Elapsed = time.Since(start)
 			return resp, resp.Error
 		}
 		if time.Now().After(deadline) {
+			keepResidue()
 			resp.Status = StatusTimeout
 			resp.Error = ErrTimeout
 			resp.Elapsed = time.Since(start)
@@ -197,36 +265,23 @@ func (s *Session) Transact(ctx context.Context, req Request) (Response, error) {
 		if dl, ok := ctx.Deadline(); ok && dl.Before(readDeadline) {
 			readDeadline = dl
 		}
-		_ = s.tr.SetDeadline(readDeadline)
-		n, err := s.tr.Read(tmp)
-		if err != nil {
-			if cerr := ctx.Err(); cerr != nil {
-				resp.Elapsed = time.Since(start)
-				return resp, cerr
-			}
-			if errors.Is(err, adapter.ErrTimeout) || isTimeout(err) {
-				if len(resp.Answers) > 0 {
-					resp.Elapsed = time.Since(start)
-					return resp, nil
-				}
-				resp.Status = StatusTimeout
-				resp.Error = ErrTimeout
-				resp.Elapsed = time.Since(start)
-				return resp, ErrTimeout
-			}
-			resp.Status = StatusMalformed
-			resp.Error = err
-			resp.Elapsed = time.Since(start)
-			return resp, err
+		if ctx.Err() == nil {
+			_ = s.tr.SetDeadline(readDeadline)
 		}
+		// Read at most one byte past the remaining budget so overflow is
+		// reported as an error instead of silently truncated.
+		limit := maxBytes - total + 1
+		if limit > len(tmp) {
+			limit = len(tmp)
+		}
+		n, err := s.tr.Read(tmp[:limit])
 		if n > 0 {
-			if len(buf)+n > maxBytes {
-				n = maxBytes - len(buf)
-			}
 			buf = append(buf, tmp[:n]...)
-			progress = true
+			total += n
+			lastByteAt = time.Now()
 		}
-		_ = progress
+		// Decode any bytes that arrived with the error before acting on it.
+		readErr = err
 	}
 }
 
