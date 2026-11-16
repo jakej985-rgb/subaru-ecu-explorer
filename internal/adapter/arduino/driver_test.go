@@ -207,3 +207,88 @@ func TestDiscoverStampsKind(t *testing.T) {
 		t.Fatalf("unexpected discovery %+v", cands)
 	}
 }
+
+func TestReaderMagicSplitAcrossReads(t *testing.T) {
+	tr := fake.NewTransport()
+	d := newDriver(tr)
+	hello := helloFrame(t, "0.1.0", 1, arduino.CapSelfTest)
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		tr.Feed([]byte{0x00, hello[0]}) // read ends on magic[0]
+		time.Sleep(50 * time.Millisecond)
+		tr.Feed(hello[1:])
+	}()
+	if _, err := d.Open(context.Background(), cand()); err != nil {
+		t.Fatalf("hello split on magic boundary lost: %v", err)
+	}
+}
+
+func TestWriteAfterIdleHandshake(t *testing.T) {
+	tr := fake.NewTransport()
+	d := newDriver(tr)
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		tr.Feed(helloFrame(t, "0.1.0", 1, arduino.CapSelfTest))
+	}()
+	s, err := d.Open(context.Background(), cand())
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(700 * time.Millisecond) // longer than perReadTimeout
+	if _, err := s.Write([]byte{0x00}); err != nil {
+		t.Fatalf("write after idle: %v", err)
+	}
+	// And after a timed-out frame read.
+	if _, err := s.(*arduino.Session).Frames().ReadFrame(50 * time.Millisecond); !errors.Is(err, adapter.ErrTimeout) {
+		t.Fatalf("expected ErrTimeout, got %v", err)
+	}
+	if _, err := s.Write([]byte{0x00}); err != nil {
+		t.Fatalf("write after read timeout: %v", err)
+	}
+}
+
+func TestHandshakeContinuousNoiseHonorsContext(t *testing.T) {
+	tr := fake.NewTransport()
+	d := newDriver(tr)
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			case <-time.After(20 * time.Millisecond):
+				tr.Feed([]byte{0x00, 0x11, 0x22})
+			}
+		}
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	if _, err := d.Open(ctx, cand()); err == nil {
+		t.Fatal("expected error under continuous noise")
+	}
+	if el := time.Since(start); el > 1500*time.Millisecond {
+		t.Fatalf("Open took %s; noise defeated cancellation", el)
+	}
+}
+
+func TestRawReadDrainsHandshakeReadAhead(t *testing.T) {
+	tr := fake.NewTransport()
+	d := newDriver(tr)
+	hb, _ := arduino.Encode(arduino.Frame{Type: arduino.TypeHeartbeat, Seq: 3, Payload: []byte{1, 2, 3, 4, 5, 6, 7}})
+	// HELLO plus a partial following frame in a single read.
+	tr.Feed(append(helloFrame(t, "0.1.0", 1, arduino.CapSelfTest), hb[:5]...))
+	s, err := d.Open(context.Background(), cand())
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 64)
+	n, err := s.Read(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(buf[:n]) != string(hb[:5]) {
+		t.Fatalf("raw read got % x, want % x", buf[:n], hb[:5])
+	}
+}

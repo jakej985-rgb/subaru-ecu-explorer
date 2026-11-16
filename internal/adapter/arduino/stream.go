@@ -30,9 +30,10 @@ func indexMagic(buf []byte) int {
 	return -1
 }
 
-// ReadFrame returns the next complete valid frame. timeout bounds each
-// underlying read (idle timeout, not a total deadline); transport errors
-// (ErrTimeout, ErrClosed, ErrPermission, ...) propagate unchanged.
+// ReadFrame returns the next complete valid frame. timeout is a total
+// deadline for this call (continuous noise cannot extend it); the transport
+// deadline is cleared on return so later writes are unaffected. Transport
+// errors (ErrTimeout, ErrClosed, ErrPermission, ...) propagate unchanged.
 func (r *Reader) ReadFrame(timeout time.Duration) (Frame, error) {
 	return r.ReadFrameUntil(timeout, time.Time{})
 }
@@ -42,6 +43,10 @@ func (r *Reader) ReadFrame(timeout time.Duration) (Frame, error) {
 // the reader alive forever. Expiry returns adapter.ErrTimeout.
 func (r *Reader) ReadFrameUntil(timeout time.Duration, until time.Time) (Frame, error) {
 	tmp := make([]byte, 256)
+	if timeout > 0 {
+		_ = r.tr.SetDeadline(time.Now().Add(timeout))
+		defer func() { _ = r.tr.SetDeadline(time.Time{}) }()
+	}
 	for {
 		// Resync: discard everything before the next magic prefix.
 		if idx := indexMagic(r.buf); idx > 0 {
