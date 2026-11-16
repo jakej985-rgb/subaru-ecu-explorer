@@ -265,8 +265,11 @@ func (s *Session) Transact(ctx context.Context, req Request) (Response, error) {
 		if dl, ok := ctx.Deadline(); ok && dl.Before(readDeadline) {
 			readDeadline = dl
 		}
-		if ctx.Err() == nil {
-			_ = s.tr.SetDeadline(readDeadline)
+		_ = s.tr.SetDeadline(readDeadline)
+		// Re-check after setting: if cancellation raced the update, restore
+		// the immediate deadline so Read cannot block past cancellation.
+		if ctx.Err() != nil {
+			_ = s.tr.SetDeadline(time.Now())
 		}
 		// Read at most one byte past the remaining budget so overflow is
 		// reported as an error instead of silently truncated.
