@@ -16,8 +16,11 @@ import (
 type Direction int
 
 const (
+	// DirectionUnspecified is the zero value; Session treats decoded
+	// messages with this direction as ECU->host.
+	DirectionUnspecified Direction = iota
 	// DirectionHostToEcu is a message transmitted by the host.
-	DirectionHostToEcu Direction = iota
+	DirectionHostToEcu
 	// DirectionEcuToHost is a message received from the ECU/module.
 	DirectionEcuToHost
 )

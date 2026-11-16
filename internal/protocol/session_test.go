@@ -227,6 +227,90 @@ func TestNoTransport(t *testing.T) {
 	}
 }
 
+func TestTransactMaxBytesAcrossCompleteFrames(t *testing.T) {
+	tr := fake.NewTransport()
+	s := protocol.NewSession(lineCodec(), tr, protocol.Options{
+		MaxBytes:    4,
+		IdleTimeout: 200 * time.Millisecond,
+	})
+	go func() {
+		// Each frame decodes fully, so the parse buffer drains between
+		// reads; only cumulative accounting catches the overflow.
+		time.Sleep(5 * time.Millisecond)
+		tr.Feed([]byte("a\n"))
+		time.Sleep(10 * time.Millisecond)
+		tr.Feed([]byte("b\n"))
+		time.Sleep(10 * time.Millisecond)
+		tr.Feed([]byte("c\n"))
+	}()
+	_, err := s.Transact(context.Background(), protocol.Request{Service: 1, Payload: []byte{1}})
+	if !errors.Is(err, protocol.ErrMalformed) {
+		t.Fatalf("expected ErrMalformed on cumulative cap, got %v", err)
+	}
+}
+
+func TestTransactMaxBytesSingleOversizedRead(t *testing.T) {
+	tr := fake.NewTransport()
+	s := protocol.NewSession(lineCodec(), tr, protocol.Options{
+		MaxBytes:    4,
+		IdleTimeout: 50 * time.Millisecond,
+	})
+	go func() {
+		time.Sleep(5 * time.Millisecond)
+		tr.Feed([]byte("a\nb\nc\n")) // 6 bytes, cap 4
+	}()
+	_, err := s.Transact(context.Background(), protocol.Request{Service: 1, Payload: []byte{1}})
+	if !errors.Is(err, protocol.ErrMalformed) {
+		t.Fatalf("expected ErrMalformed, not silent truncation; got %v", err)
+	}
+}
+
+func TestTransactPreCanceledContextDoesNotWrite(t *testing.T) {
+	tr := fake.NewTransport()
+	s := protocol.NewSession(lineCodec(), tr, protocol.Options{})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := s.Transact(ctx, protocol.Request{Service: 1, Payload: []byte{1}})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+	if n := len(tr.Written()); n != 0 {
+		t.Fatalf("request written despite canceled context (%d bytes)", n)
+	}
+}
+
+func TestTransactCancelInterruptsBlockedRead(t *testing.T) {
+	tr := fake.NewTransport()
+	s := protocol.NewSession(lineCodec(), tr, protocol.Options{ResponseTimeout: 10 * time.Second})
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { time.Sleep(20 * time.Millisecond); cancel() }()
+	start := time.Now()
+	_, err := s.Transact(ctx, protocol.Request{Service: 1, Payload: []byte{1}})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+	if el := time.Since(start); el > 500*time.Millisecond {
+		t.Fatalf("cancellation took %s; blocked read not interrupted", el)
+	}
+}
+
+func TestTransactCancelDoesNotLeakIntoNextExchange(t *testing.T) {
+	tr := fake.NewTransport()
+	s := protocol.NewSession(lineCodec(), tr, protocol.Options{IdleTimeout: 20 * time.Millisecond})
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { time.Sleep(10 * time.Millisecond); cancel() }()
+	_, _ = s.Transact(ctx, protocol.Request{Service: 1, Payload: []byte{1}})
+
+	go func() { time.Sleep(10 * time.Millisecond); tr.Feed([]byte("ok\n")) }()
+	resp, err := s.Transact(context.Background(), protocol.Request{Service: 1, Payload: []byte{1}})
+	if err != nil {
+		t.Fatalf("second exchange failed: %v", err)
+	}
+	if resp.Status != protocol.StatusOK {
+		t.Fatalf("status %s", resp.Status)
+	}
+}
+
 func TestAdapterTransportSatisfiesByteTransport(t *testing.T) {
 	var tr adapter.Transport = fake.NewTransport()
 	var _ protocol.ByteTransport = tr
