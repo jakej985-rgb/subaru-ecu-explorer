@@ -155,6 +155,28 @@ const (
 	CapSelfTest        uint32 = 1 << 2 // firmware supports a read-only self-test
 )
 
+// Downlink operation codes: DATA payload byte 0, host -> firmware.
+// The firmware allowlist is explicit; anything else is rejected.
+const (
+	OpSelfTest = 0x01 // read-only self-test, no vehicle I/O
+)
+
+// Firmware status states: STATUS payload byte 0.
+const (
+	StBoot        = 0x00
+	StReady       = 0x01
+	StError       = 0x02
+	StVehDisabled = 0x03
+)
+
+// Firmware error codes: ERROR payload byte 0.
+const (
+	ErrUnsupportedOp = 0x10
+	ErrBadPayload    = 0x11
+	ErrInternal      = 0x12
+	ErrVehicleIO     = 0x20
+)
+
 // Hello is the firmware handshake payload: versioned capability negotiation.
 type Hello struct {
 	FirmwareVersion string

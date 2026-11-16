@@ -105,6 +105,13 @@ type transport struct {
 	closed   bool
 }
 
+// Open opens path as a serial transport at baud (8N1 raw, poll deadlines).
+// It is the transport-level entry point for drivers that need a serial
+// byte stream; it performs no protocol work.
+func Open(path string, baud uint32) (adapter.Transport, error) {
+	return openSerial(path, baud)
+}
+
 const pollTerminal = unix.POLLHUP | unix.POLLERR | unix.POLLNVAL
 
 func openSerial(path string, baud uint32) (*transport, error) {
