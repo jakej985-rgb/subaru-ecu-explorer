@@ -43,6 +43,10 @@ func (c *Client) Query(ctx context.Context, mode, pid byte) (Measurement, error)
 		return Measurement{}, err
 	}
 	req := elm327.Mode(mode, pid)
+	if mode == 0x03 {
+		// Mode 03 carries no PID on the wire; 0x00 is only a registry key.
+		req = elm327.Mode(mode)
+	}
 	if c.pst > 0 {
 		req.Timeout = c.pst
 	}

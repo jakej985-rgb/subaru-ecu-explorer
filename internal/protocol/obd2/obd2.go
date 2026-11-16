@@ -199,7 +199,7 @@ var registry = map[[2]byte]pidDef{
 	// ---- Mode 09: vehicle information ----
 	{0x09, 0x02}: {mode: 0x09, pid: 0x02, name: "vin", bytes: 0, unit: "", extraSkip: 1,
 		decode: asciiDecode},
-	{0x09, 0x06}: {mode: 0x09, pid: 0x06, name: "calibration-id", bytes: 0, unit: "", extraSkip: 1,
+	{0x09, 0x04}: {mode: 0x09, pid: 0x04, name: "calibration-id", bytes: 0, unit: "", extraSkip: 1,
 		decode: asciiDecode},
 	{0x09, 0x0A}: {mode: 0x09, pid: 0x0A, name: "ecu-name", bytes: 0, unit: "", extraSkip: 1,
 		decode: asciiDecode},
@@ -232,11 +232,11 @@ func decodeDTCs(b []byte) (any, error) {
 		code := fmt.Sprintf("%s%s%X%02X", sysLetter, second, hi&0x0F, lo)
 		// Mode 03 = confirmed DTCs: confirmed bit set by definition.
 		out = append(out, DTC{
-			Code:       code,
-			Raw:        [2]byte{hi, lo},
-			Type:       dtcSystemName(typeBits),
-			Confirmed:  true,
-			TestFailed: hi&0x08 != 0,
+			Code:      code,
+			Raw:       [2]byte{hi, lo},
+			Type:      dtcSystemName(typeBits),
+			Confirmed: true,
+			// Mode 03 carries no per-DTC status; TestFailed stays false.
 		})
 	}
 	return out, nil
